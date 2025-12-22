@@ -1,368 +1,251 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-    Layout,
     Zap,
-    FileText,
-    Calculator,
-    MessageSquare,
-    Download,
-    Layers,
     ArrowRight,
-    Grid3X3,
+    Terminal,
     Cpu,
-    Moon,
-    Sun,
-    Save,
-    CheckCircle2,
-    Code2,
+    Activity,
+    Layout,
+    Grid3X3,
+    MessageSquare,
+    Shield,
     Database,
-    ShieldCheck,
-    HelpCircle,
-    ChevronDown
+    Code2,
+    CheckCircle2,
+    ChevronDown,
+    Play
 } from 'lucide-react';
 import './LandingPage.css';
 
 const LandingPage: React.FC = () => {
     const navigate = useNavigate();
-    const [openFaq, setOpenFaq] = React.useState<number | null>(null);
+    const [scrolled, setScrolled] = useState(false);
+    const [activeFaq, setActiveFaq] = useState<number | null>(null);
 
-    const scrollToFeatures = () => {
-        document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
-    };
+    // Parallax effect on scroll
+    useEffect(() => {
+        const handleScroll = () => {
+            setScrolled(window.scrollY > 50);
+        };
+        window.addEventListener('scroll', handleScroll);
+        return () => window.removeEventListener('scroll', handleScroll);
+    }, []);
 
     const toggleFaq = (index: number) => {
-        setOpenFaq(openFaq === index ? null : index);
+        setActiveFaq(activeFaq === index ? null : index);
     };
 
     return (
-        <div className="landing-container">
+        <div className="command-center">
             {/* Navbar */}
-            <nav className="lp-nav">
-                <div className="lp-logo">
-                    <span className="logo-icon">⚡</span>
-                    SAYANHO
+            <nav className={`cc-nav ${scrolled ? 'scrolled' : ''}`}>
+                <div className="cc-logo">
+                    <div className="logo-symbol">
+                        <Zap size={20} fill="currentColor" />
+                    </div>
+                    <span className="logo-text">SAYANHO</span>
+                    <span className="logo-version">v1.2</span>
                 </div>
-                <div className="lp-nav-links">
-                    <span onClick={scrollToFeatures} className="lp-nav-link">Features</span>
-                    <span onClick={() => document.getElementById('specs')?.scrollIntoView({ behavior: 'smooth' })} className="lp-nav-link">Specs</span>
-                    <span onClick={() => document.getElementById('faq')?.scrollIntoView({ behavior: 'smooth' })} className="lp-nav-link">FAQ</span>
-                    <button onClick={() => navigate('/design')} className="btn-primary-sm">
-                        Launch Designer
-                        <ArrowRight size={16} />
-                    </button>
+                <div className="cc-nav-links">
+                    <a href="#features">Platform</a>
+                    <a href="#specs">Specs</a>
+                    <a href="#faq">FAQ</a>
                 </div>
+                <button className="cc-btn-primary small" onClick={() => navigate('/design')}>
+                    <Terminal size={16} />
+                    <span>Launch Console</span>
+                </button>
             </nav>
 
-            {/* Hero Section */}
-            <section className="hero">
-                <div className="hero-glow"></div>
-                <div className="hero-content">
-                    <div className="hero-badge">
-                        <Zap size={14} />
-                        Sayanho v1.2 — Now with AI Assistant
-                    </div>
-                    <h1>
-                        Professional Electrical<br />
-                        <span className="gradient-text">Distribution Design</span>
-                    </h1>
-                    <p className="hero-subtitle">
-                        The complete web-based tool for electrical engineers.
-                        Create single-line diagrams, configure panels, calculate ratings, and export professional
-                        documentation — all in your browser.
-                    </p>
-                    <div className="hero-ctas">
-                        <button onClick={() => navigate('/design')} className="btn-primary">
-                            Start Designing Free
-                            <ArrowRight size={18} />
-                        </button>
-                        <button onClick={scrollToFeatures} className="btn-secondary">
-                            Explore Features
-                        </button>
-                    </div>
-                    <div className="hero-stats">
-                        <div className="stat">
-                            <span className="stat-value">50+</span>
-                            <span className="stat-label">Components</span>
-                        </div>
-                        <div className="stat-divider"></div>
-                        <div className="stat">
-                            <span className="stat-value">10</span>
-                            <span className="stat-label">Categories</span>
-                        </div>
-                        <div className="stat-divider"></div>
-                        <div className="stat">
-                            <span className="stat-value">100%</span>
-                            <span className="stat-label">Free</span>
-                        </div>
-                    </div>
-                </div>
-
-                <div className="hero-visual">
-                    <div className="hero-visual-glow"></div>
-                    <video
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        poster="/assets/landing/hero_workspace.png"
-                    >
+            {/* Immersive Hero */}
+            <section className="cc-hero">
+                <div className="cc-video-bg">
+                    <video autoPlay loop muted playsInline poster="/assets/landing/hero_workspace.png">
                         <source src="/assets/landing/hero_video.webp" type="video/webp" />
                     </video>
-                </div>
-            </section>
-
-            {/* Features Bento Grid */}
-            <section id="features" className="features-section">
-                <div className="section-header">
-                    <span className="section-badge">FEATURES</span>
-                    <h2>Everything you need for<br /><span className="gradient-text">electrical distribution</span></h2>
+                    <div className="cc-overlay"></div>
                 </div>
 
-                <div className="bento-grid">
-                    {/* Large Card: Diagram Designer */}
-                    <div className="bento-card bento-large">
-                        <div className="bento-icon"><Layout size={28} /></div>
-                        <h3>Diagram Designer</h3>
-                        <p>
-                            Professional Konva-based canvas with drag-and-drop components,
-                            smart connections, multi-select, pan/zoom, and context menus.
-                        </p>
-                        <div className="bento-visual">
-                            <img src="/assets/landing/component_library.png" alt="Component Library" />
-                        </div>
+                <div className="cc-hero-content">
+                    <div className="status-pill">
+                        <span className="dot pulse"></span>
+                        System Operational
                     </div>
-
-                    {/* Large Card: Cubicle Panel Designer */}
-                    <div className="bento-card bento-large featured">
-                        <div className="featured-badge">NEW</div>
-                        <div className="bento-icon"><Grid3X3 size={28} /></div>
-                        <h3>LT Cubicle Panel Designer</h3>
-                        <p>
-                            Visual designer for LT panels with incomers, busbars, and outgoings.
-                            Configure MCCB/MCB ratings, copy/paste slots, and see real-time previews.
-                        </p>
-                        <div className="bento-visual">
-                            <img src="/assets/landing/cubicle_panel_new.png" alt="Cubicle Panel Designer" />
-                        </div>
-                    </div>
-
-                    {/* Medium Cards Row */}
-                    <div className="bento-card bento-medium">
-                        <div className="bento-icon"><Zap size={24} /></div>
-                        <h3>Auto-Rating Engine</h3>
-                        <p>
-                            One-click network analysis. Automatically select cable sizes,
-                            MCCB ratings, and generate comprehensive PDF reports.
-                        </p>
-                    </div>
-
-                    <div className="bento-card bento-medium">
-                        <div className="bento-icon"><MessageSquare size={24} /></div>
-                        <h3>AI Diagram Assistant</h3>
-                        <p>
-                            Natural language interface. Ask the AI to add components,
-                            analyze loads, or query your project database.
-                        </p>
-                    </div>
-
-                    <div className="bento-card bento-medium">
-                        <div className="bento-icon"><Layers size={24} /></div>
-                        <h3>Multi-Canvas Sheets</h3>
-                        <p>
-                            Organize complex projects with tabbed canvases.
-                            Rename, reorder, and link sheets with portals.
-                        </p>
-                    </div>
-
-                    <div className="bento-card bento-medium">
-                        <div className="bento-icon"><Calculator size={24} /></div>
-                        <h3>Voltage Drop Calculator</h3>
-                        <p>
-                            Precision engineering tool for single and 3-phase networks.
-                            Verify compliance with local standards.
-                        </p>
-                    </div>
-                </div>
-            </section>
-
-            {/* Deep Dive: Cubicle Panel */}
-            <section className="deep-dive">
-                <div className="deep-dive-content">
-                    <span className="section-badge">SPOTLIGHT</span>
-                    <h2>Visual Panel<br /><span className="gradient-text">Configuration</span></h2>
-                    <p>
-                        The LT Cubicle Panel Designer provides a real-time visual representation
-                        of your electrical panel. Configure incomers with ACB/MCCB devices,
-                        set busbar materials (Copper/Aluminium), and add outgoing circuits
-                        with proper ratings — all through an intuitive visual interface.
+                    <h1 className="glitch-text" data-text="ELECTRICAL ENGINEERING REIMAGINED">
+                        ELECTRICAL ENGINEERING <br />
+                        <span className="text-highlight">REIMAGINED</span>
+                    </h1>
+                    <p className="cc-subtitle">
+                        The world's first web-native electrical CAD platform. <br />
+                        Design, Analyze, and Document in one unified workspace.
                     </p>
-                    <ul className="feature-list">
-                        <li><CheckCircle2 size={18} /> Visual incomer and outgoing slot configuration</li>
-                        <li><CheckCircle2 size={18} /> Real-time panel layout preview</li>
-                        <li><CheckCircle2 size={18} /> Copy/paste device configurations</li>
-                        <li><CheckCircle2 size={18} /> Multi-section panel support</li>
-                    </ul>
-                    <button onClick={() => navigate('/design')} className="btn-primary">
-                        Try It Now
-                        <ArrowRight size={18} />
-                    </button>
-                </div>
-                <div className="deep-dive-visual">
-                    <div className="visual-glow"></div>
-                    <video
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        poster="/assets/landing/cubicle_panel_new.png"
-                    >
-                        <source src="/assets/landing/cubicle_panel.webp" type="video/webp" />
-                    </video>
+                    <div className="cc-cta-group">
+                        <button className="cc-btn-primary large" onClick={() => navigate('/design')}>
+                            Start Building
+                            <ArrowRight size={20} />
+                        </button>
+                        <button className="cc-btn-secondary large" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
+                            View Capabilities
+                        </button>
+                    </div>
                 </div>
             </section>
 
-            {/* Deep Dive: AI Assistant */}
-            <section className="deep-dive reverse">
-                <div className="deep-dive-visual">
-                    <div className="visual-glow"></div>
-                    <video
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        className="rounded-lg border border-white/10 shadow-2xl"
-                    >
-                        <source src="/assets/landing/ai_chat_video.webp" type="video/webp" />
-                    </video>
+            {/* Live Bento Grid - The "Command Center" Interface */}
+            <section id="features" className="cc-features">
+                <div className="section-title">
+                    <Activity size={24} className="accent-icon" />
+                    <h2>CORE CAPABILITIES</h2>
                 </div>
-                <div className="deep-dive-content">
-                    <span className="section-badge">AI-POWERED</span>
-                    <h2>Intelligent Design<br /><span className="gradient-text">Assistant</span></h2>
-                    <p>
-                        The AI Diagram Assistant understands your project context.
-                        Ask it to analyze loads, suggest cable sizes, add components to
-                        specific distribution boards, or query your project database
-                        using natural language.
-                    </p>
-                    <ul className="feature-list">
-                        <li><Cpu size={18} /> Context-aware diagram manipulation</li>
-                        <li><Database size={18} /> Database query mode for specifications</li>
-                        <li><MessageSquare size={18} /> Add selection to chat for analysis</li>
-                        <li><Zap size={18} /> Execute design tools via commands</li>
-                    </ul>
-                </div>
-            </section>
 
-            {/* Deep Dive: Auto-Rating */}
-            <section className="deep-dive">
-                <div className="deep-dive-content">
-                    <span className="section-badge">AUTOMATION</span>
-                    <h2>Smart Rating<br /><span className="gradient-text">& Compliance</span></h2>
-                    <p>
-                        Run network analysis with a single click. The auto-rating engine
-                        traverses your entire electrical network, calculating loads and
-                        selecting appropriate ratings for MCCBs, cables, and protective devices.
-                    </p>
-                    <ul className="feature-list">
-                        <li><ShieldCheck size={18} /> IEC-compliant rating calculations</li>
-                        <li><FileText size={18} /> Detailed process logs for transparency</li>
-                        <li><Download size={18} /> Downloadable PDF reports</li>
-                        <li><Zap size={18} /> Dynamic property updates</li>
-                    </ul>
-                </div>
-                <div className="deep-dive-visual">
-                    <div className="visual-glow"></div>
-                    <img
-                        src="/assets/landing/autorating_result.png"
-                        alt="Auto Rating Result"
-                        className="rounded-lg border border-white/10 shadow-2xl w-full"
-                    />
-                </div>
-            </section>
+                <div className="cc-bento-grid">
+                    {/* Main Feature: Cubicle Panel - Video Card */}
+                    <div className="bento-card large video-card">
+                        <div className="card-header">
+                            <Grid3X3 size={20} />
+                            <h3>Visual Cubicle Designer</h3>
+                            <span className="beta-tag">NEW</span>
+                        </div>
+                        <div className="video-container">
+                            <video autoPlay loop muted playsInline>
+                                <source src="/assets/landing/cubicle_panel.webp" type="video/webp" />
+                            </video>
+                        </div>
+                        <div className="card-footer">
+                            <p>Real-time visual configuration of LT panels. Drag, drop, and configure incomers and busbars instantly.</p>
+                        </div>
+                    </div>
 
-            {/* Technical Specs Section (New) */}
-            <section id="specs" className="specs-section">
-                <div className="section-header">
-                    <span className="section-badge">BUILT FOR PERFORMANCE</span>
-                    <h2>Technical<br /><span className="gradient-text">Specifications</span></h2>
-                </div>
-                <div className="specs-grid">
-                    <div className="spec-item">
-                        <Code2 size={24} className="spec-icon" />
-                        <div>
-                            <h4>React & TypeScript</h4>
-                            <p>Built with modern web technologies for maximum performance and type safety.</p>
+                    {/* Feature: AI Assistant - Video Card */}
+                    <div className="bento-card medium video-card">
+                        <div className="card-header">
+                            <MessageSquare size={20} />
+                            <h3>AI Copilot</h3>
+                        </div>
+                        <div className="video-container">
+                            <video autoPlay loop muted playsInline>
+                                <source src="/assets/landing/ai_chat_video.webp" type="video/webp" />
+                            </video>
+                        </div>
+                        <div className="card-footer">
+                            <p>Natural language design commands and technical queries.</p>
                         </div>
                     </div>
-                    <div className="spec-item">
-                        <Zap size={24} className="spec-icon" />
-                        <div>
-                            <h4>Canvas Rendering</h4>
-                            <p>High-performance canvas rendering engine capable of handling thousands of components.</p>
+
+                    {/* Feature: Auto-Rating - Video Card */}
+                    <div className="bento-card medium video-card">
+                        <div className="card-header">
+                            <Cpu size={20} />
+                            <h3>Auto-Rating Engine</h3>
+                        </div>
+                        <div className="video-container">
+                            <video autoPlay loop muted playsInline>
+                                <source src="/assets/landing/auto_rating_video.webp" type="video/webp" />
+                            </video>
+                        </div>
+                        <div className="card-footer">
+                            <p>One-click network traversing analysis and sizing.</p>
                         </div>
                     </div>
-                    <div className="spec-item">
-                        <Database size={24} className="spec-icon" />
-                        <div>
-                            <h4>Local Storage</h4>
-                            <p>Auto-save functionality ensures your work is never lost, even if browsing is interrupted.</p>
+
+                    {/* Feature: Diagram Canvas - Static Fallback if no video dedicated */}
+                    <div className="bento-card large static-card">
+                        <div className="card-header">
+                            <Layout size={20} />
+                            <h3>Advanced Schematic Canvas</h3>
                         </div>
-                    </div>
-                    <div className="spec-item">
-                        <ShieldCheck size={24} className="spec-icon" />
-                        <div>
-                            <h4>Client-Side Processing</h4>
-                            <p>Most calculations happen directly in your browser for instant feedback.</p>
+                        <div className="img-container">
+                            <img src="/assets/landing/hero_workspace.png" alt="Canvas" />
+                            <div className="img-overlay"></div>
+                        </div>
+                        <div className="card-footer">
+                            <p>Infinite canvas with smart connectors, multi-sheet portals, and SVG-based component rendering.</p>
                         </div>
                     </div>
                 </div>
             </section>
 
-            {/* Export Options */}
-            <section className="export-section">
-                <div className="section-header">
-                    <span className="section-badge">EXPORT</span>
-                    <h2>Professional<br /><span className="gradient-text">Documentation</span></h2>
+            {/* Terminal Specs Section */}
+            <section id="specs" className="cc-specs">
+                <div className="section-title">
+                    <Code2 size={24} className="accent-icon" />
+                    <h2>SYSTEM ARCHITECTURE</h2>
                 </div>
-                <div className="export-grid">
-                    <div className="export-card">
-                        <div className="export-icon"><FileText size={32} /></div>
-                        <h4>Excel BOQ</h4>
-                        <p>Generate detailed Bill of Quantities with item specifications</p>
+
+                <div className="terminal-window">
+                    <div className="terminal-header">
+                        <div className="traffic-lights">
+                            <div className="light red"></div>
+                            <div className="light yellow"></div>
+                            <div className="light green"></div>
+                        </div>
+                        <span className="terminal-title">~/sayanho-core/specs.json</span>
                     </div>
-                    <div className="export-card">
-                        <div className="export-icon"><Download size={32} /></div>
-                        <h4>PDF Reports</h4>
-                        <p>Comprehensive auto-rating reports with calculations</p>
-                    </div>
-                    <div className="export-card">
-                        <div className="export-icon"><Save size={32} /></div>
-                        <h4>PNG Diagrams</h4>
-                        <p>High-resolution diagram exports for documentation</p>
+                    <div className="terminal-body">
+                        <div className="code-line">
+                            <span className="var">const</span> <span className="name">infrastructure</span> = {'{'}
+                        </div>
+                        <div className="code-line indent">
+                            <span className="prop">frontend</span>: <span className="string">"React 18 + TypeScript"</span>,
+                        </div>
+                        <div className="code-line indent">
+                            <span className="prop">rendering</span>: <span className="string">"HTML5 Canvas API"</span>,
+                        </div>
+                        <div className="code-line indent">
+                            <span className="prop">state_management</span>: <span className="string">"Zustand + Immer"</span>,
+                        </div>
+                        <div className="code-line indent">
+                            <span className="prop">persistence</span>: <span className="string">"Local First (IndexedDB)"</span>
+                        </div>
+                        <div className="code-line">{'}'};</div>
+                        <br />
+                        <div className="code-line">
+                            <span className="var">export</span> <span className="func">function</span> <span className="name">getCapabilities</span>() {'{'}
+                        </div>
+                        <div className="code-line indent">
+                            <span className="keyword">return</span> [
+                        </div>
+                        <div className="code-line double-indent">
+                            <span className="string">"IEC_60947_2_Compliant"</span>,
+                        </div>
+                        <div className="code-line double-indent">
+                            <span className="string">"Real_Time_Validation"</span>,
+                        </div>
+                        <div className="code-line double-indent">
+                            <span className="string">"Zero_Latency_Interaction"</span>
+                        </div>
+                        <div className="code-line indent">
+                            ];
+                        </div>
+                        <div className="code-line">{'}'}</div>
+                        <div className="cursor-line">
+                            <span className="prompt">root@sayanho:~$</span> <span className="cursor">█</span>
+                        </div>
                     </div>
                 </div>
             </section>
 
-            {/* FAQ Section (New) */}
-            <section id="faq" className="faq-section">
-                <div className="section-header">
-                    <span className="section-badge">FAQ</span>
-                    <h2>Common<br /><span className="gradient-text">Questions</span></h2>
+            {/* Premium FAQ */}
+            <section id="faq" className="cc-faq">
+                <div className="section-title">
+                    <Shield size={24} className="accent-icon" />
+                    <h2>KNOWLEDGE_BASE</h2>
                 </div>
-                <div className="faq-container">
+
+                <div className="faq-grid">
                     {[
-                        { q: "Is Sayanho free to use?", a: "Yes, Sayanho is currently 100% free for all users. You can access all features including the AI assistant without any cost." },
-                        { q: "Can I export my designs?", a: "Absolutely. You can export your diagrams as high-quality PNG images, and your bill of quantities (BOQ) as Excel files." },
-                        { q: "Does it work offline?", a: "Sayanho requires an internet connection for initial load and AI features, but many design functions work locally in your browser." },
-                        { q: "Is my data secure?", a: "Your project data is stored locally in your browser's storage by default. We prioritize your privacy and data security." }
-                    ].map((item, index) => (
-                        <div key={index} className={`faq-item ${openFaq === index ? 'open' : ''}`} onClick={() => toggleFaq(index)}>
-                            <div className="faq-question">
-                                <span>{item.q}</span>
-                                <ChevronDown size={20} className={`faq-icon ${openFaq === index ? 'rotate' : ''}`} />
+                        { q: "Is the platform strictly for Panel Design?", a: "No. Sayanho is a comprehensive electrical design platform. While it features a dedicated LT Cubicle Panel Designer, its core is a powerful Single Line Diagram (SLD) and wiring schematic engine suitable for complex building electrification." },
+                        { q: "How does the AI Assistant integration work?", a: "The AI Copilot has read/write access to the canvas state via a secure API bridge. It can semantically understand your circuit topology to answer questions like 'What is the total connected load on DB-1?' or execute actions like 'Add a 63A MCB'." },
+                        { q: "Can I export data for external cost estimation?", a: "Yes. The platform generates structured BOQ (Bill of Quantities) exports in Excel format, including granular metadata for every component, cable length, and rating, ready for estimation software." },
+                        { q: "Does it support offline operation?", a: "Sayanho follows a 'Local-First' architecture. Once loaded, the core design engine runs entirely in your browser memory, ensuring zero latency and allowing you to continue working even if your connection drops." }
+                    ].map((item, i) => (
+                        <div key={i} className={`faq-item ${activeFaq === i ? 'active' : ''}`} onClick={() => toggleFaq(i)}>
+                            <div className="faq-head">
+                                <span className="q-text">{item.q}</span>
+                                <ChevronDown className="chevron" size={20} />
                             </div>
-                            <div className="faq-answer">
+                            <div className="faq-body">
                                 <p>{item.a}</p>
                             </div>
                         </div>
@@ -370,20 +253,19 @@ const LandingPage: React.FC = () => {
                 </div>
             </section>
 
-            {/* Final CTA */}
-            <section className="final-cta">
-                <div className="cta-glow"></div>
-                <h2>Ready to design<br /><span className="gradient-text">smarter?</span></h2>
-                <p>Join engineers worldwide using Sayanho for professional electrical design</p>
-                <button onClick={() => navigate('/design')} className="btn-primary btn-large">
-                    Launch Sayanho Designer
-                    <ArrowRight size={20} />
-                </button>
-            </section>
-
             {/* Footer */}
-            <footer className="lp-footer">
-                <p>Sayanho Web v1.2 — Built for electrical engineers</p>
+            <footer className="cc-footer">
+                <div className="footer-content">
+                    <div className="footer-col">
+                        <h4>SAYANHO</h4>
+                        <p>© 2025 Engineering Corp</p>
+                    </div>
+                    <div className="footer-col">
+                        <a href="#">Documentation</a>
+                        <a href="#">API Status</a>
+                        <a href="#">Privacy Protocol</a>
+                    </div>
+                </div>
             </footer>
         </div>
     );
