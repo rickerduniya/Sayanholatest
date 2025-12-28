@@ -439,59 +439,57 @@ function DesignerApp() {
 
             {/* Top Bar Area - Menu & Toolbar */}
             <div className="absolute top-0 left-0 right-0 z-50 p-2 pointer-events-none flex justify-between items-start">
-                <div className="flex items-center gap-4 pointer-events-auto animate-slide-in-top w-full relative">
-                    {/* Branding - in toolbar */}
-                    <div className="absolute left-1/2 transform -translate-x-1/2 -top-1 pointer-events-none z-50">
-                        <h1 className="text-lg font-bold tracking-widest uppercase opacity-70" style={{ color: theme === 'dark' ? '#fff' : '#333' }}>Sayanho <span className="text-xs font-normal opacity-60">V1.2</span></h1>
+                {/* Branding - in toolbar */}
+                <div className="absolute left-1/2 transform -translate-x-1/2 -top-1 pointer-events-none z-50">
+                    <h1 className="text-lg font-bold tracking-widest uppercase opacity-70" style={{ color: theme === 'dark' ? '#fff' : '#333' }}>Sayanho <span className="text-xs font-normal opacity-60">V1.2</span></h1>
+                </div>
+
+                {/* Menu Bar */}
+                {showMenu && (
+                    <div className="premium-glass rounded-full px-3 py-1 z-50 pointer-events-auto" style={{ backgroundColor: colors.menuBackground }}>
+                        <MenuBar
+                            onLoad={handleOpen}
+                            onSave={handleSave}
+                            onSaveAs={handleSaveAs}
+                            onSaveImage={handleSaveImage}
+                            onSettings={() => setShowSettings(true)}
+                            onGenerateEstimate={handleGenerateEstimate}
+
+                            onOpenVoltageDrop={() => setShowVoltageDropDialog(true)}
+                            onOpenNetworkMonitor={() => setShowNetworkMonitor(true)}
+                        />
                     </div>
+                )}
 
-                    {/* Menu Bar */}
-                    {showMenu && (
-                        <div className="premium-glass rounded-full px-3 py-1 z-50" style={{ backgroundColor: colors.menuBackground }}>
-                            <MenuBar
-                                onLoad={handleOpen}
-                                onSave={handleSave}
-                                onSaveAs={handleSaveAs}
-                                onSaveImage={handleSaveImage}
-                                onSettings={() => setShowSettings(true)}
-                                onGenerateEstimate={handleGenerateEstimate}
-
-                                onOpenVoltageDrop={() => setShowVoltageDropDialog(true)}
-                                onOpenNetworkMonitor={() => setShowNetworkMonitor(true)}
-                            />
-                        </div>
-                    )}
-
-                    {/* Toolbar - Centered relative to screen, independent of menu */}
-                    <div className="absolute left-1/2 transform -translate-x-1/2 top-0 pointer-events-auto">
-                        <div className="premium-glass rounded-xl p-1.5 flex items-center h-[36px]"> {/* Fixed height to match menu */}
-                            <Toolbar
-                                onLoad={handleOpen}
-                                onZoomIn={handleZoomIn}
-                                onZoomOut={handleZoomOut}
-                                onSetZoom={handleSetZoom}
-                                onResetZoom={handleResetZoom}
-                                onFitContent={handleFitContent}
-                                scale={scale}
-                                showLeftPanel={showLeftPanel}
-                                onToggleLeftPanel={() => setShowLeftPanel(!showLeftPanel)}
-                                showMenu={showMenu}
-                                onToggleMenu={() => setShowMenu(!showMenu)}
-                                showChat={isChatOpen}
-                                onToggleChat={toggleChat}
-                                onAutoRate={handleAutoRate}
-                                onAddText={() => setIsAddTextMode(!isAddTextMode)}
-                                isAddTextMode={isAddTextMode}
-                                onUndo={undo}
-                                onRedo={redo}
-                                panMode={panMode}
-                                onSetPanMode={setPanMode}
-                                onCalculate={calculateNetwork}
-                                onCopyTrace={handleCopyTrace}
-                                showCurrentValues={showCurrentValues}
-                                onToggleShowCurrentValues={toggleShowCurrentValues}
-                            />
-                        </div>
+                {/* Toolbar - Centered relative to screen, independent of menu */}
+                <div className="absolute left-1/2 transform -translate-x-1/2 top-0 pointer-events-auto">
+                    <div className="premium-glass rounded-xl p-1.5 flex items-center h-[36px]"> {/* Fixed height to match menu */}
+                        <Toolbar
+                            onLoad={handleOpen}
+                            onZoomIn={handleZoomIn}
+                            onZoomOut={handleZoomOut}
+                            onSetZoom={handleSetZoom}
+                            onResetZoom={handleResetZoom}
+                            onFitContent={handleFitContent}
+                            scale={scale}
+                            showLeftPanel={showLeftPanel}
+                            onToggleLeftPanel={() => setShowLeftPanel(!showLeftPanel)}
+                            showMenu={showMenu}
+                            onToggleMenu={() => setShowMenu(!showMenu)}
+                            showChat={isChatOpen}
+                            onToggleChat={toggleChat}
+                            onAutoRate={handleAutoRate}
+                            onAddText={() => setIsAddTextMode(!isAddTextMode)}
+                            isAddTextMode={isAddTextMode}
+                            onUndo={undo}
+                            onRedo={redo}
+                            panMode={panMode}
+                            onSetPanMode={setPanMode}
+                            onCalculate={calculateNetwork}
+                            onCopyTrace={handleCopyTrace}
+                            showCurrentValues={showCurrentValues}
+                            onToggleShowCurrentValues={toggleShowCurrentValues}
+                        />
                     </div>
                 </div>
             </div>

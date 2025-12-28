@@ -1,8 +1,9 @@
 /**
  * CacheService
  * 
- * Provides a simple caching mechanism using localStorage.
+ * Provides a simple caching mechanism using sessionStorage.
  * "Cache First" strategy: always return from cache if available.
+ * Cache clears automatically on browser reload/tab close.
  */
 
 const STORAGE_PREFIX = 'sayanho_cache_';
@@ -39,7 +40,7 @@ export class CacheService {
      */
     static get<T>(key: string): T | null {
         try {
-            const item = localStorage.getItem(key);
+            const item = sessionStorage.getItem(key);
             if (!item) return null;
 
             const parsed: CacheEntry<T> = JSON.parse(item);
@@ -47,7 +48,7 @@ export class CacheService {
             // Version check
             if (parsed.version !== CACHE_VERSION) {
                 if (DEBUG) console.log(`[Cache] Version mismatch for ${key}. Invalidating.`);
-                localStorage.removeItem(key);
+                sessionStorage.removeItem(key);
                 return null;
             }
 
@@ -69,7 +70,7 @@ export class CacheService {
                 timestamp: Date.now(),
                 version: CACHE_VERSION
             };
-            localStorage.setItem(key, JSON.stringify(entry));
+            sessionStorage.setItem(key, JSON.stringify(entry));
             if (DEBUG) console.log(`[Cache] Saved ${key}`);
         } catch (e) {
             console.warn(`[Cache] Failed to save key ${key}`, e);
@@ -85,9 +86,9 @@ export class CacheService {
      * Clear all application specific cache
      */
     static clear(): void {
-        Object.keys(localStorage).forEach(key => {
+        Object.keys(sessionStorage).forEach(key => {
             if (key.startsWith(STORAGE_PREFIX)) {
-                localStorage.removeItem(key);
+                sessionStorage.removeItem(key);
             }
         });
         console.log('[Cache] Cleared all entries.');

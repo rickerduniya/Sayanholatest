@@ -9,6 +9,7 @@ import { updateItemVisuals } from '../utils/SvgUpdater';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { sortOptionStringsAsc } from '../utils/sortUtils';
 import { fetchProperties } from '../utils/api';
+import { CacheService } from '../services/CacheService';
 
 const CATEGORIES: Record<string, string[]> = {
     "Distribution Boards": ["VTPN", "HTPN", "SPN DB", "LT Cubical Panel"],
@@ -156,15 +157,28 @@ export const Sidebar = () => {
             }
         }
 
-        // Fetch SVG Content
+        // Fetch SVG Content (with caching using item name as key)
         if (itemData.iconPath) {
             try {
                 const iconName = itemData.iconPath.split('/').pop();
-                const url = api.getIconUrl(iconName!);
-                const encodedUrl = encodeURI(url);
-                const response = await fetch(encodedUrl);
-                if (response.ok) {
-                    newItem.svgContent = await response.text();
+                // Use item name as cache key for consistency
+                const cacheKey = CacheService.generateKey('sidebar_svg', { name: itemData.name });
+                const cachedSvg = CacheService.get<string>(cacheKey);
+
+                if (cachedSvg) {
+                    console.log('[Sidebar] ✓ Cache HIT for', itemData.name);
+                    newItem.svgContent = cachedSvg;
+                } else {
+                    console.log('[Sidebar] Cache MISS for', itemData.name, '- fetching...');
+                    const url = api.getIconUrl(iconName!);
+                    const encodedUrl = encodeURI(url);
+                    const response = await fetch(encodedUrl);
+                    if (response.ok) {
+                        const svgText = await response.text();
+                        CacheService.set(cacheKey, svgText);
+                        console.log('[Sidebar] ✓ Cached SVG for', itemData.name);
+                        newItem.svgContent = svgText;
+                    }
                 }
             } catch (e) {
                 console.error("Failed to fetch SVG content", e);
