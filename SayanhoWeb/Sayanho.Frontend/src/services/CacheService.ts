@@ -16,7 +16,7 @@ interface CacheEntry<T> {
 }
 
 // Current version of the cache structure - incrementing this invalidates all old cache
-const CACHE_VERSION = 'v1';
+const CACHE_VERSION = 'v2';
 
 export class CacheService {
 
