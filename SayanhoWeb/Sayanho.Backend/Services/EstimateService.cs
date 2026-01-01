@@ -75,10 +75,11 @@ namespace Sayanho.Backend.Services
                 { "Wiring", 12 },
                 { "Laying", 13 },
                 { "Compression Glands", 14 },
-                { "ACB", 15 },
-                { "Point Switch Board", 16 },
-                { "On Board", 17 },
-                { "Avg. 5A Switch Board", 18 }
+                { "Finishing Cable Ends", 15 },
+                { "ACB", 16 },
+                { "Point Switch Board", 17 },
+                { "On Board", 18 },
+                { "Avg. 5A Switch Board", 19 }
             };
 
             allItems = allItems.OrderBy(item =>
@@ -608,6 +609,52 @@ namespace Sayanho.Backend.Services
                                 }
                             }
                         }
+
+                            // Check if Accessories exist and finishing_required is true
+                            if (connector.Accessories != null && connector.Accessories.Count > 0)
+                            {
+                                var options = connector.Accessories[0];
+                                if (options.ContainsKey("finishing_required") && options["finishing_required"] == "true" &&
+                                    options.ContainsKey("number_of_finishing") && options.ContainsKey("finishing_method"))
+                                {
+                                    int numberOfFinishing = int.Parse(options["number_of_finishing"]);
+                                    string method = options["finishing_method"]; // Soldering vs Crimping
+                                    
+                                    try 
+                                    {
+                                        var dbResult = Sayanho.Core.Logic.DatabaseLoader.LoadDefaultPropertiesFromDatabase("Finishing Cable Ends", 20); // Fetch enough rows to find match
+                                        
+                                        // Filter based on Cable properties (Core, Size) AND Method
+                                        var core = connector.Properties.ContainsKey("Core") ? connector.Properties["Core"] : "";
+                                        var size = connector.Properties.ContainsKey("Size") ? connector.Properties["Size"] : "";
+                                        
+                                        // Normalize strings for comparison
+                                        core = core.Trim();
+                                        size = size.Trim();
+                                        method = method.Trim();
+
+                                        var finishingProps = dbResult.Properties.FirstOrDefault(row => 
+                                            (row.ContainsKey("Method") && row["Method"].Trim().Equals(method, StringComparison.OrdinalIgnoreCase)) &&
+                                            (row.ContainsKey("Core") && row["Core"].Trim().Equals(core, StringComparison.OrdinalIgnoreCase)) &&
+                                            (row.ContainsKey("Size") && row["Size"].Trim().Equals(size, StringComparison.OrdinalIgnoreCase))
+                                        );
+                                            
+                                        if (finishingProps != null)
+                                        {
+                                            Calculation("Finishing Cable Ends", finishingProps, 1, connector.AlternativeCompany1, connector.AlternativeCompany2, -1, numberOfFinishing, 3);
+                                        }
+                                        else
+                                        {
+                                            Console.WriteLine($"[ESTIMATE] Could not find properties for Finishing Cable Ends with Method={method}, Core={core}, Size={size}");
+                                        }
+                                    }
+                                    catch (Exception ex)
+                                    {
+                                        Console.WriteLine($"[ESTIMATE] Error fetching properties for Finishing Cable Ends: {ex.Message}");
+                                    }
+                                }
+                            }
+
                         
                         // Process laying properties (only for cables, not for wiring connections)
                         if (connector.Laying != null && connector.Laying.Count > 0 && connector.MaterialType != "Wiring")

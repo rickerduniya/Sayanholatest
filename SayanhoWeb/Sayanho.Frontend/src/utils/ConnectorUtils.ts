@@ -44,13 +44,18 @@ const OFFSET = 20;
 const OBSTACLE_AVOIDANCE_OFFSET = 5;
 const PARALLEL_LINE_THRESHOLD = 8;
 
+// Bus-bar routing constants
+const BUS_OFFSET = 30; // Fixed offset from source item for horizontal bus line
+const STAGGER_SPACING = 25; // Gap between staggered bus lines to prevent overlap (increased from 15)
+
 export class ConnectorUtils {
 
     static calculateConnectorPath(
         connector: Connector,
         canvasItems: CanvasItem[],
         existingPaths: Point[][],
-        scale: number
+        scale: number,
+        allConnectors?: Connector[] // All connectors from the sheet for X-position ordering
     ): { points: Point[], specText?: ConnectionPath } {
         const sourceItem = connector.sourceItem;
         const targetItem = connector.targetItem;
@@ -82,7 +87,21 @@ export class ConnectorUtils {
             return { points: finalPoints, specText };
         }
 
-        // Step 2: Calculate path using custom heuristic (L-shapes + obstacle avoidance)
+        // Step 2: Try Bus-Bar Style Routing (vertical → horizontal bus → vertical)
+        // This creates cleaner SLD-style paths with shared horizontal bus lines
+        const busPath = this.calculateBusBarPath(
+            originalStart, originalEnd, startPoint, endPoint,
+            sourceItem, targetItem, canvasItems, existingPaths, scale,
+            connector, allConnectors
+        );
+
+        if (busPath && this.isPathClearForBusRouting(busPath, canvasItems, sourceItem, targetItem, scale)) {
+            specText = this.getSpecTextAndPosition(connector, busPath, scale, canvasItems, existingPaths);
+            finalPoints = this.addJumperIndicationsToPath(busPath, existingPaths, scale);
+            return { points: finalPoints, specText };
+        }
+
+        // Step 3: Fallback to L-shape routing (original algorithm)
         const attempts = this.calculatePath(startPoint, endPoint, canvasItems, existingPaths, scale);
         let lastAttemptPoints = [startPoint];
 
@@ -99,6 +118,333 @@ export class ConnectorUtils {
         finalPoints = this.addJumperIndicationsToPath(lastAttemptPoints, existingPaths, scale);
 
         return { points: finalPoints, specText };
+    }
+
+    /**
+     * Calculate Bus-Bar style path: creates a 3-segment path (vertical → horizontal → vertical)
+     * This produces cleaner SLD-style routing with shared horizontal bus lines.
+     * 
+     * Path structure:
+     * - originalStart → startPoint (offset from source)
+     * - startPoint → bus junction point (vertical segment to bus level)
+     * - bus junction → target junction (horizontal segment along bus)
+     * - target junction → endPoint (vertical segment to target offset)
+     * - endPoint → originalEnd (into target)
+     */
+    private static calculateBusBarPath(
+        originalStart: Point,
+        originalEnd: Point,
+        startPoint: Point,
+        endPoint: Point,
+        sourceItem: CanvasItem,
+        targetItem: CanvasItem,
+        canvasItems: CanvasItem[],
+        existingPaths: Point[][],
+        scale: number,
+        currentConnector?: Connector,
+        allConnectors?: Connector[]
+    ): Point[] | null {
+        // Determine the direction of connection
+        const isDownward = startPoint.y < endPoint.y;  // Source is above target
+        const isUpward = startPoint.y > endPoint.y;    // Source is below target
+        const isHorizontal = Math.abs(startPoint.y - endPoint.y) < 1; // Same level
+
+        // If nearly horizontal (same Y level), skip bus routing - use L-shape
+        if (isHorizontal) {
+            return null;
+        }
+
+        // Calculate base bus Y position based on direction
+        let baseBusY: number;
+        let minBusY: number;
+        let maxBusY: number;
+
+        if (isDownward) {
+            // Source above target: bus is below source connection point
+            // Use startPoint.y (actual connection point) for rotation-aware calculation
+            const sourceConnectionY = startPoint.y;
+            const targetTop = targetItem.position.y;
+
+            baseBusY = sourceConnectionY + BUS_OFFSET;
+            minBusY = sourceConnectionY + 10;
+            maxBusY = targetTop - OFFSET;
+
+            // If not enough space, fall back to L-shape
+            if (baseBusY >= maxBusY) {
+                baseBusY = (sourceConnectionY + targetTop) / 2;
+                if (baseBusY >= maxBusY || baseBusY <= minBusY) {
+                    return null;
+                }
+            }
+        } else {
+            // Source below target: bus is above source connection point
+            // Use startPoint.y (actual connection point) for rotation-aware calculation
+            const sourceConnectionY = startPoint.y;
+            const targetBottom = targetItem.position.y + targetItem.size.height;
+
+            baseBusY = sourceConnectionY - BUS_OFFSET;
+            minBusY = targetBottom + OFFSET;
+            maxBusY = sourceConnectionY - 10;
+
+            // If not enough space, fall back to L-shape
+            if (baseBusY <= minBusY) {
+                baseBusY = (sourceConnectionY + targetBottom) / 2;
+                if (baseBusY <= minBusY || baseBusY >= maxBusY) {
+                    return null;
+                }
+            }
+        }
+
+        // Calculate bus Y based on target X position rank (to prevent crossing)
+        let busY: number | null;
+
+        if (currentConnector && allConnectors && allConnectors.length > 0) {
+            // Use X-position-based ranking for consistent ordering
+            const rank = this.calculateTargetXRank(currentConnector, allConnectors, canvasItems);
+            const staggerDirection = isDownward ? 1 : -1;
+            busY = baseBusY + (rank * STAGGER_SPACING * staggerDirection);
+
+            // Check bounds
+            if (isDownward && busY > maxBusY) {
+                busY = null;
+            } else if (!isDownward && busY < minBusY) {
+                busY = null;
+            }
+        } else {
+            // Fallback: use collision-based staggering (original behavior)
+            busY = this.findNonOverlappingBusY(
+                baseBusY, existingPaths, startPoint.x, endPoint.x,
+                minBusY, maxBusY, isDownward, scale
+            );
+        }
+
+        // If no valid bus Y found within bounds, fall back to L-shape
+        if (busY === null) {
+            return null;
+        }
+
+        // Construct the bus-bar path:
+        // originalStart → startPoint → (startPoint.x, busY) → (endPoint.x, busY) → endPoint → originalEnd
+        const busPath: Point[] = [
+            originalStart,          // Inside source component
+            startPoint,             // Offset point from source
+            { x: startPoint.x, y: busY },   // Vertical drop/rise to bus level
+            { x: endPoint.x, y: busY },     // Horizontal along bus line
+            endPoint,               // Offset point to target  
+            originalEnd             // Inside target component
+        ];
+
+        return busPath;
+    }
+
+    /**
+     * Find a bus Y position that doesn't overlap with existing horizontal segments.
+     * Staggers the bus Y by STAGGER_SPACING until no overlap is found.
+     * 
+     * @param baseBusY - The initial bus Y position to try
+     * @param existingPaths - Previously calculated connector paths
+     * @param startX - X coordinate of the start of horizontal segment
+     * @param endX - X coordinate of the end of horizontal segment
+     * @param minBusY - Minimum allowed bus Y (boundary)
+     * @param maxBusY - Maximum allowed bus Y (boundary)
+     * @param isDownward - Direction of connector (affects stagger direction)
+     * @param scale - Current canvas scale
+     * @returns Non-overlapping bus Y, or null if none found within bounds
+     */
+    private static findNonOverlappingBusY(
+        baseBusY: number,
+        existingPaths: Point[][],
+        startX: number,
+        endX: number,
+        minBusY: number,
+        maxBusY: number,
+        isDownward: boolean,
+        scale: number
+    ): number | null {
+        const OVERLAP_THRESHOLD = STAGGER_SPACING / 2; // Y distance to consider as overlap
+        let currentBusY = baseBusY;
+        const staggerDirection = isDownward ? 1 : -1; // Stagger downward or upward
+
+        // Calculate the X range for our horizontal segment
+        const ourMinX = Math.min(startX, endX);
+        const ourMaxX = Math.max(startX, endX);
+
+        // Collect all horizontal segments from existing paths and their Y levels
+        const existingHorizontalSegments: { y: number, minX: number, maxX: number }[] = [];
+
+        for (const path of existingPaths) {
+            for (let i = 0; i < path.length - 1; i++) {
+                const p1 = path[i];
+                const p2 = path[i + 1];
+
+                // Check if this is a horizontal segment
+                if (Math.abs(p1.y - p2.y) < 0.1) {
+                    existingHorizontalSegments.push({
+                        y: p1.y,
+                        minX: Math.min(p1.x, p2.x),
+                        maxX: Math.max(p1.x, p2.x)
+                    });
+                }
+            }
+        }
+
+        // Try to find a non-overlapping Y position
+        const MAX_ATTEMPTS = 20; // Prevent infinite loop
+        for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+            let hasOverlap = false;
+
+            for (const segment of existingHorizontalSegments) {
+                // Check if Y levels are close enough to overlap
+                const yOverlap = Math.abs(currentBusY - segment.y) < OVERLAP_THRESHOLD;
+
+                // Check if X ranges overlap
+                const xOverlap = !(ourMaxX < segment.minX || ourMinX > segment.maxX);
+
+                if (yOverlap && xOverlap) {
+                    hasOverlap = true;
+                    break;
+                }
+            }
+
+            if (!hasOverlap) {
+                // Check if within bounds
+                if (isDownward && currentBusY >= minBusY && currentBusY <= maxBusY) {
+                    return currentBusY;
+                } else if (!isDownward && currentBusY >= minBusY && currentBusY <= maxBusY) {
+                    return currentBusY;
+                }
+            }
+
+            // Stagger to next position
+            currentBusY += staggerDirection * STAGGER_SPACING;
+
+            // Check if we've exceeded bounds
+            if (isDownward && currentBusY > maxBusY) {
+                return null; // No valid position found
+            } else if (!isDownward && currentBusY < minBusY) {
+                return null;
+            }
+        }
+
+        return null; // No valid position found after MAX_ATTEMPTS
+    }
+
+    /**
+     * Calculate the rank of a connector based on its horizontal distance from source.
+     * Closer targets get lower rank (topmost bus), farther targets get higher rank.
+     * This ensures consistent ordering regardless of whether targets are left or right of source.
+     * 
+     * @param currentConnector - The connector to find the rank for
+     * @param allConnectors - All connectors in the sheet
+     * @param canvasItems - All canvas items (for getting current positions)
+     * @returns Rank (0-indexed): 0 for closest target, increasing with distance
+     */
+    private static calculateTargetXRank(
+        currentConnector: Connector,
+        allConnectors: Connector[],
+        canvasItems: CanvasItem[]
+    ): number {
+        // Find the current source item's ID
+        const sourceId = currentConnector.sourceItem.uniqueID;
+        const sourcePointKey = currentConnector.sourcePointKey;
+
+        // Find all connectors from the same source
+        const siblingsFromSameSource = allConnectors.filter(
+            c => c.sourceItem.uniqueID === sourceId
+        );
+
+        if (siblingsFromSameSource.length <= 1) {
+            return 0; // Only one connector, no staggering needed
+        }
+
+        // Get source item and calculate source X position
+        const sourceItem = canvasItems.find(ci => ci.uniqueID === sourceId) || currentConnector.sourceItem;
+        let sourceX = sourceItem.position.x + sourceItem.size.width / 2; // Default: center
+        if (sourceItem.connectionPoints && sourceItem.connectionPoints[sourcePointKey]) {
+            sourceX = sourceItem.position.x + sourceItem.connectionPoints[sourcePointKey].x;
+        }
+
+        // Calculate target X position and DISTANCE from source for each sibling connector
+        interface ConnectorWithDistance {
+            connector: Connector;
+            targetX: number;
+            distance: number; // Horizontal distance from source
+        }
+
+        const connectorsWithDistance: ConnectorWithDistance[] = siblingsFromSameSource.map(c => {
+            // Get the current target item position (may have moved since connector was created)
+            const targetItem = canvasItems.find(ci => ci.uniqueID === c.targetItem.uniqueID) || c.targetItem;
+            const targetPointKey = c.targetPointKey;
+
+            // Calculate target X position (connection point X on target)
+            let targetX = targetItem.position.x;
+            if (targetItem.connectionPoints && targetItem.connectionPoints[targetPointKey]) {
+                targetX = targetItem.position.x + targetItem.connectionPoints[targetPointKey].x;
+            } else {
+                // Fallback: use center of target item
+                targetX = targetItem.position.x + targetItem.size.width / 2;
+            }
+
+            // Calculate horizontal distance from source
+            const distance = Math.abs(targetX - sourceX);
+
+            return { connector: c, targetX, distance };
+        });
+
+        // Sort by DISTANCE from source (FARTHER first = topmost bus)
+        // This prevents crossing: longer horizontal spans on top, shorter below
+        connectorsWithDistance.sort((a, b) => b.distance - a.distance);
+
+        // Find the rank of the current connector
+        const rank = connectorsWithDistance.findIndex(
+            item => item.connector.sourceItem.uniqueID === currentConnector.sourceItem.uniqueID &&
+                item.connector.targetItem.uniqueID === currentConnector.targetItem.uniqueID &&
+                item.connector.sourcePointKey === currentConnector.sourcePointKey &&
+                item.connector.targetPointKey === currentConnector.targetPointKey
+        );
+
+        return rank >= 0 ? rank : 0;
+    }
+
+    /**
+     * Check if a bus-bar path is clear of obstacles.
+     * Excludes source and target items from obstacle checking.
+     */
+    private static isPathClearForBusRouting(
+        path: Point[],
+        canvasItems: CanvasItem[],
+        sourceItem: CanvasItem,
+        targetItem: CanvasItem,
+        scale: number
+    ): boolean {
+        // Filter out source and target from obstacles
+        const obstacles = canvasItems.filter(
+            item => item.uniqueID !== sourceItem.uniqueID && item.uniqueID !== targetItem.uniqueID
+        );
+
+        // Check each segment of the path (skip first and last which connect to components)
+        for (let i = 1; i < path.length - 2; i++) {
+            const segStart = path[i];
+            const segEnd = path[i + 1];
+
+            const isHorizontalSeg = Math.abs(segStart.y - segEnd.y) < 0.1;
+
+            for (const item of obstacles) {
+                const rect = this.getExpandedRectangle(item, scale);
+
+                if (isHorizontalSeg) {
+                    if (this.isInHorizontalPath(segStart, segEnd, rect)) {
+                        return false;
+                    }
+                } else {
+                    if (this.isInVerticalPath(segStart, segEnd, rect)) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
     }
 
     private static calculatePath(

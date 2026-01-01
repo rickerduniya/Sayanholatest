@@ -26,16 +26,17 @@ const OPTIONS = {
     SOURCE_FREQUENCY: ["50 Hz", "60 Hz"],
     RATINGS: ["32A", "63A", "100A", "125A", "160A", "200A", "250A", "400A", "630A", "800A", "1000A", "1250A", "1600A", "2000A", "2500A", "3200A", "4000A"],
     TYPE: ["Lighting", "Appliance", "Other"],
-    SWITCH_VOLTAGE: ["230V DP", "415V TPN", "415V FP"]
+    SWITCH_VOLTAGE: ["230V DP", "415V TPN", "415V FP"],
+    FINISHING_METHOD: ["Crimping", "Soldering"]
 };
 
 export const PropertiesPanel: React.FC = React.memo(() => {
-    const { sheets, activeSheetId, selectedItemIds, selectedConnectorIndex, updateSheet, updateConnector, editMode, setEditMode, isPropertiesPanelOpen } = useStore(
+    const { sheets, activeSheetId, selectedItemIds, selectedConnectorIndices, updateSheet, updateConnector, editMode, setEditMode, isPropertiesPanelOpen } = useStore(
         state => ({
             sheets: state.sheets,
             activeSheetId: state.activeSheetId,
             selectedItemIds: state.selectedItemIds,
-            selectedConnectorIndex: state.selectedConnectorIndex,
+            selectedConnectorIndices: state.selectedConnectorIndices,
             updateSheet: state.updateSheet,
             updateConnector: state.updateConnector,
             editMode: state.editMode,
@@ -143,11 +144,13 @@ export const PropertiesPanel: React.FC = React.memo(() => {
     // Reset page when item changes
     useEffect(() => {
         setCurrentPage(1);
-    }, [selectedItemIds, selectedConnectorIndex]);
+    }, [selectedItemIds, selectedConnectorIndices]);
 
     // Only show properties if exactly one item is selected
     const selectedItemId = selectedItemIds.length === 1 ? selectedItemIds[0] : null;
     const selectedItem = selectedItemId ? currentSheet?.canvasItems.find(item => item.uniqueID === selectedItemId) : null;
+    // Only show connector properties if exactly one connector is selected
+    const selectedConnectorIndex = selectedConnectorIndices.length === 1 ? selectedConnectorIndices[0] : null;
     const selectedConnector = selectedConnectorIndex !== null && currentSheet ? currentSheet.storedConnectors[selectedConnectorIndex] : null;
     const isConnectorVirtual = !!(selectedConnector && (selectedConnector.isVirtual || (selectedConnector.properties && (selectedConnector.properties as any)["IsVirtual"] === 'True')));
 
@@ -357,7 +360,22 @@ export const PropertiesPanel: React.FC = React.memo(() => {
         } else if (selectedConnector) {
             // Connector Logic
             setEditedProperties(selectedConnector.properties || {});
-            setEditedAccessories(selectedConnector.accessories && selectedConnector.accessories[0] ? selectedConnector.accessories[0] : {});
+            setEditedProperties(selectedConnector.properties || {});
+
+            // Auto-set accessories defaults for Cable if not present
+            const acc = selectedConnector.accessories && selectedConnector.accessories[0] ? { ...selectedConnector.accessories[0] } : {};
+            if (selectedConnector.materialType === "Cable") {
+                if (!Object.prototype.hasOwnProperty.call(acc, "glands_required")) {
+                    acc["glands_required"] = "true";
+                    acc["number_of_glands"] = "2";
+                }
+                if (!Object.prototype.hasOwnProperty.call(acc, "finishing_required")) {
+                    acc["finishing_required"] = "true";
+                    acc["number_of_finishing"] = "2";
+                    acc["finishing_method"] = "Crimping";
+                }
+            }
+            setEditedAccessories(acc);
             setEditedLaying(selectedConnector.laying || {});
             setEditedIncomer({});
             setEditedOutgoing([]);
@@ -458,7 +476,18 @@ export const PropertiesPanel: React.FC = React.memo(() => {
     };
 
     const handleAccessoryChange = (key: string, value: string) => {
-        setEditedAccessories(prev => ({ ...prev, [key]: value }));
+        const newAcc = { ...editedAccessories, [key]: value };
+
+        // Auto-set count to 2 if checked and count is missing
+        if (key === "finishing_required" && value === "true" && !newAcc["number_of_finishing"]) {
+            newAcc["number_of_finishing"] = "2";
+        }
+        // Auto-set default method if checked and method is missing
+        if (key === "finishing_required" && value === "true" && !newAcc["finishing_method"]) {
+            newAcc["finishing_method"] = "Crimping";
+        }
+
+        setEditedAccessories(newAcc);
     };
 
     const handleIncomerChange = (key: string, value: string) => {
@@ -1697,45 +1726,21 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                                     {editedAccessories["glands_required"] === "true" &&
                                         renderNumberInput("Number of Glands", "number_of_glands", 1, 2, editedAccessories, handleAccessoryChange, 2)
                                     }
+
+                                    {/* Finishing Cable Ends */}
+                                    {renderCheckbox("Finishing Required", "finishing_required", editedAccessories, handleAccessoryChange)}
+                                    {editedAccessories["finishing_required"] === "true" && (
+                                        <>
+                                            {renderNumberInput("Number of Ends", "number_of_finishing", 1, 2, editedAccessories, handleAccessoryChange, 2)}
+                                            {renderDropdown("Method", "finishing_method", OPTIONS.FINISHING_METHOD, editedAccessories, handleAccessoryChange)}
+                                        </>
+                                    )}
                                 </div>
                                 {renderLayingProperties()}
                             </>
                         )}
 
-                        {/* Network Analysis Results */}
-                        {selectedConnector.currentValues && (
-                            <div className="mt-4 pt-4 border-t border-gray-200">
-                                <h4 className="text-xs font-bold mb-2" style={{ color: colors.text }}>Network Analysis</h4>
-                                <div className="grid grid-cols-2 gap-2 text-xs" style={{ color: colors.text }}>
-                                    <div>
-                                        <span className="opacity-70 block">Total Current:</span>
-                                        <span className="font-medium">{selectedConnector.currentValues["Current"]}</span>
-                                    </div>
-                                    <div>
-                                        <span className="opacity-70 block">Phase:</span>
-                                        <span className="font-medium">{selectedConnector.currentValues["Phase"]}</span>
-                                    </div>
-                                    {selectedConnector.currentValues["R_Current"] !== "0 A" && (
-                                        <div>
-                                            <span className="opacity-70 block text-red-500">R Phase:</span>
-                                            <span className="font-medium">{selectedConnector.currentValues["R_Current"]}</span>
-                                        </div>
-                                    )}
-                                    {selectedConnector.currentValues["Y_Current"] !== "0 A" && (
-                                        <div>
-                                            <span className="opacity-70 block text-yellow-500">Y Phase:</span>
-                                            <span className="font-medium">{selectedConnector.currentValues["Y_Current"]}</span>
-                                        </div>
-                                    )}
-                                    {selectedConnector.currentValues["B_Current"] !== "0 A" && (
-                                        <div>
-                                            <span className="opacity-70 block text-blue-500">B Phase:</span>
-                                            <span className="font-medium">{selectedConnector.currentValues["B_Current"]}</span>
-                                        </div>
-                                    )}
-                                </div>
-                            </div>
-                        )}
+
                     </div>
                 )}
             </div>

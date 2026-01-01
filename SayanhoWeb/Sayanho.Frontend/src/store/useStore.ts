@@ -8,7 +8,7 @@ interface StoreState {
     activeSheetId: string | null;
 
     selectedItemIds: string[]; // Changed from selectedItemId
-    selectedConnectorIndex: number | null;
+    selectedConnectorIndices: number[];
     editMode: boolean;
     isPropertiesPanelOpen: boolean;
     isChatOpen: boolean;
@@ -43,7 +43,7 @@ interface StoreState {
     clearSelection: () => void;
 
     addConnector: (connector: Connector) => void;
-    selectConnector: (index: number | null, openPanel?: boolean) => void;
+    selectConnector: (indexOrIndices: number | number[] | null, openPanel?: boolean) => void;
     setEditMode: (mode: boolean) => void;
     toggleChat: () => void;
 
@@ -127,7 +127,7 @@ export const useStore = create<StoreState>((set, get) => ({
     }],
     activeSheetId: 'default',
     selectedItemIds: [],
-    selectedConnectorIndex: null,
+    selectedConnectorIndices: [],
     editMode: false,
     isPropertiesPanelOpen: false,
     isChatOpen: false,
@@ -195,7 +195,7 @@ export const useStore = create<StoreState>((set, get) => ({
             sheets: initializedSheets,
             activeSheetId: initializedSheets[0].sheetId,
             selectedItemIds: [],
-            selectedConnectorIndex: null
+            selectedConnectorIndices: []
         });
     },
 
@@ -218,7 +218,7 @@ export const useStore = create<StoreState>((set, get) => ({
             sheets: [...state.sheets, newSheet],
             activeSheetId: newId,
             selectedItemIds: [],
-            selectedConnectorIndex: null
+            selectedConnectorIndices: []
         };
     }),
 
@@ -238,14 +238,14 @@ export const useStore = create<StoreState>((set, get) => ({
             sheets: newSheets,
             activeSheetId: newActiveId,
             selectedItemIds: [],
-            selectedConnectorIndex: null
+            selectedConnectorIndices: []
         };
     }),
 
     setActiveSheet: (id) => set({
         activeSheetId: id,
         selectedItemIds: [],
-        selectedConnectorIndex: null
+        selectedConnectorIndices: []
     }),
 
     renameSheet: (id, name) => set((state) => ({
@@ -301,7 +301,7 @@ export const useStore = create<StoreState>((set, get) => ({
                 redoStack: newRedoStack
             } : s),
             selectedItemIds: [],
-            selectedConnectorIndex: null
+            selectedConnectorIndices: []
         };
     }),
 
@@ -329,7 +329,7 @@ export const useStore = create<StoreState>((set, get) => ({
                 redoStack: newRedoStack
             } : s),
             selectedItemIds: [],
-            selectedConnectorIndex: null
+            selectedConnectorIndices: []
         };
     }),
 
@@ -477,7 +477,32 @@ export const useStore = create<StoreState>((set, get) => ({
     },
 
     deleteSelected: () => {
-        const { selectedItemIds } = get();
+        const { selectedItemIds, selectedConnectorIndices } = get();
+
+        // Handle connector deletion if no items selected but connectors are
+        if (selectedItemIds.length === 0 && selectedConnectorIndices.length > 0) {
+            get().takeSnapshot();
+            set((state) => {
+                const activeSheet = state.sheets.find(s => s.sheetId === state.activeSheetId);
+                if (!activeSheet) return {};
+
+                // Filter out connectors at selected indices
+                const indicesToDelete = new Set(selectedConnectorIndices);
+                const filteredConnectors = activeSheet.storedConnectors.filter((_, idx) => !indicesToDelete.has(idx));
+
+                return {
+                    sheets: state.sheets.map(s => s.sheetId === state.activeSheetId ? {
+                        ...s,
+                        storedConnectors: filteredConnectors
+                    } : s),
+                    selectedConnectorIndices: [],
+                    isPropertiesPanelOpen: false
+                };
+            });
+            get().calculateNetwork();
+            return;
+        }
+
         if (selectedItemIds.length === 0) return;
 
         get().takeSnapshot();
@@ -648,7 +673,21 @@ export const useStore = create<StoreState>((set, get) => ({
         get().calculateNetwork();
     },
 
-    selectConnector: (index, openPanel = true) => set({ selectedConnectorIndex: index, isPropertiesPanelOpen: index !== null && openPanel, selectedItemIds: [] }),
+    selectConnector: (indexOrIndices, openPanel = true) => set(() => {
+        let indices: number[];
+        if (indexOrIndices === null) {
+            indices = [];
+        } else if (Array.isArray(indexOrIndices)) {
+            indices = indexOrIndices;
+        } else {
+            indices = [indexOrIndices];
+        }
+        return {
+            selectedConnectorIndices: indices,
+            isPropertiesPanelOpen: indices.length === 1 && openPanel,
+            selectedItemIds: []
+        };
+    }),
 
     updateConnector: (index, updates) => {
         get().takeSnapshot();
@@ -839,7 +878,7 @@ export const useStore = create<StoreState>((set, get) => ({
                 storedConnectors: [...s.storedConnectors, ...newConnectors]
             } : s),
             selectedItemIds: newItems.map(i => i.uniqueID), // Select newly pasted items
-            selectedConnectorIndex: null
+            selectedConnectorIndices: []
         }));
         get().calculateNetwork();
     },

@@ -18,7 +18,7 @@ namespace Sayanho.Backend.Controllers
             var itemNames = new List<string>
             {
                 "Source", "Main Switch", "Change Over Switch", "SPN DB", 
-                "Bulb", "Ceiling Fan", "VTPN", "HTPN", "Point Switch Board",
+                "Bulb", "Tube Light", "Call Bell", "Ceiling Fan", "VTPN", "HTPN", "Point Switch Board",
                 "Avg. 5A Switch Board", "AC Point", "Geyser Point", "Exhaust Fan",
                 "LT Cubical Panel"
             };
@@ -86,6 +86,8 @@ namespace Sayanho.Backend.Controllers
                 "LT Cubical Panel" => new System.Drawing.Size(300, 200),
                 "HTPN" => new System.Drawing.Size(150, 120),
                 "Bulb" => new System.Drawing.Size(40, 40),
+                "Tube Light" => new System.Drawing.Size(50, 50),
+                "Call Bell" => new System.Drawing.Size(50, 50),
                 "Ceiling Fan" => new System.Drawing.Size(50, 50),
                 _ => new System.Drawing.Size(60, 60)
             };

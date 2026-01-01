@@ -130,7 +130,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
     const {
         sheets, activeSheetId, addItem, updateItemPosition, updateItemSize, updateItemLock, duplicateItem,
         selectItem, selectedItemIds, selectAll, clearSelection, deleteSelected, moveItems,
-        updateSheet, deleteItem, addConnector, selectedConnectorIndex, selectConnector, setEditMode, takeSnapshot,
+        updateSheet, deleteItem, addConnector, selectedConnectorIndices, selectConnector, setEditMode, takeSnapshot,
         copySelection, pasteSelection, copyConnectorProperties, pasteConnectorProperties,
         rotateItem, flipItemVertically, flipItemHorizontally, updateItemProperties, updateItemTransform,
         copiedItems, copiedConnectorProperties, showCurrentValues,
@@ -772,11 +772,8 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
             deleteSelected();
             return;
         }
-        if (selectedConnectorIndex != null && currentSheet && updateSheet) {
-            const idx = selectedConnectorIndex;
-            const next = currentSheet.storedConnectors.filter((_, i) => i !== idx);
-            updateSheet({ storedConnectors: next });
-            selectConnector(null);
+        if (selectedConnectorIndices.length > 0) {
+            deleteSelected();
         }
     };
 
@@ -1165,9 +1162,51 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                         }
                     });
 
-                    // Update store
-                    clearSelection();
-                    newSelectedIds.forEach(id => selectItem(id, true));
+                    // If items are in the box, select items (connectors are ignored)
+                    if (newSelectedIds.length > 0) {
+                        clearSelection();
+                        selectConnector(null); // Clear connector selection
+                        newSelectedIds.forEach(id => selectItem(id, true));
+                    } else {
+                        // No items in box - check for connectors
+                        const connectorIndicesInBox: number[] = [];
+
+                        // Helper to check if a line segment intersects with the selection box
+                        const lineIntersectsBox = (points: { x: number; y: number }[]): boolean => {
+                            for (const point of points) {
+                                if (point.x >= boxX && point.x <= boxX + boxW &&
+                                    point.y >= boxY && point.y <= boxY + boxH) {
+                                    return true;
+                                }
+                            }
+                            // Also check if any segment crosses the box
+                            for (let i = 0; i < points.length - 1; i++) {
+                                const p1 = points[i];
+                                const p2 = points[i + 1];
+                                // Simple bounding box check for segment
+                                const segMinX = Math.min(p1.x, p2.x);
+                                const segMaxX = Math.max(p1.x, p2.x);
+                                const segMinY = Math.min(p1.y, p2.y);
+                                const segMaxY = Math.max(p1.y, p2.y);
+                                if (segMaxX >= boxX && segMinX <= boxX + boxW &&
+                                    segMaxY >= boxY && segMinY <= boxY + boxH) {
+                                    return true;
+                                }
+                            }
+                            return false;
+                        };
+
+                        calculatedPaths.forEach((pathData, idx) => {
+                            if (lineIntersectsBox(pathData.points)) {
+                                connectorIndicesInBox.push(idx);
+                            }
+                        });
+
+                        if (connectorIndicesInBox.length > 0) {
+                            clearSelection(); // Clear item selection
+                            selectConnector(connectorIndicesInBox);
+                        }
+                    }
                 }
             }
             setSelectionBox(null);
@@ -1220,7 +1259,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
         };
         window.addEventListener('keydown', onKeyDown);
         return () => window.removeEventListener('keydown', onKeyDown);
-    }, [selectedItemIds, selectedConnectorIndex, clickStart, dragStart, selectionBox]);
+    }, [selectedItemIds, selectedConnectorIndices, clickStart, dragStart, selectionBox]);
 
     // Helper to calculate all paths for rendering
     const calculatedPaths = React.useMemo(() => {
@@ -1236,7 +1275,8 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                 updatedConnector,
                 currentSheet.canvasItems,
                 existingPaths,
-                1 // Fixed scale 1 for path logic (ignore zoom)
+                1, // Fixed scale 1 for path logic (ignore zoom)
+                currentSheet.storedConnectors // Pass all connectors for X-position ordering
             );
             existingPaths.push(result.points);
             return { ...result, connector: updatedConnector };
@@ -1324,8 +1364,9 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                             return;
                         }
 
-                        // Clicking on empty space
-                        if (!e.evt.shiftKey && !e.evt.ctrlKey) {
+                        // Clicking on empty space - but not with right click (context menu)
+                        // Right click is button 2
+                        if (!e.evt.shiftKey && !e.evt.ctrlKey && e.evt.button !== 2) {
                             selectItem(null); // Clear selection
                             selectConnector(null);
                         }
@@ -1371,7 +1412,11 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                             <Group key={i}
                                 onContextMenu={(e) => {
                                     e.evt.preventDefault();
-                                    selectConnector(i, false);
+                                    // If this connector is already selected, keep the selection
+                                    // Otherwise, select only this connector
+                                    if (!selectedConnectorIndices.includes(i)) {
+                                        selectConnector(i, false);
+                                    }
                                     selectItem(null);
                                     setMenu({
                                         visible: true,
@@ -1386,10 +1431,13 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                                 <Line
                                     points={pts}
                                     stroke="transparent"
-                                    strokeWidth={Math.max(15 / scale, selectedConnectorIndex === i ? 3 : 2)}
+                                    strokeWidth={Math.max(15 / scale, selectedConnectorIndices.includes(i) ? 3 : 2)}
                                     lineJoin="round"
                                     lineCap="round"
-                                    onClick={() => { selectConnector(i); }}
+                                    onClick={(e) => {
+                                        if (e.evt.button === 2) return;
+                                        selectConnector(i);
+                                    }}
                                     onMouseEnter={(e) => {
                                         const stage = e.target.getStage();
                                         if (stage) {
@@ -1408,8 +1456,8 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                                 {/* Visible Line */}
                                 <Line
                                     points={pts}
-                                    stroke={selectedConnectorIndex === i ? "#2563eb" : getPhaseColor(pathData.connector, theme)}
-                                    strokeWidth={selectedConnectorIndex === i ? 3 : 2}
+                                    stroke={selectedConnectorIndices.includes(i) ? "#2563eb" : getPhaseColor(pathData.connector, theme)}
+                                    strokeWidth={selectedConnectorIndices.includes(i) ? 3 : 2}
                                     lineJoin="round"
                                     lineCap="round"
                                     listening={false}
@@ -1877,30 +1925,31 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                                 <button
                                     className={`block w-full text-left px-3 py-1 ${theme === 'dark' ? 'hover:bg-slate-700' : 'hover:bg-gray-100'}`}
                                     onClick={() => {
-                                        if (currentSheet && updateSheet) {
-                                            const next = currentSheet.storedConnectors.filter((_, i) => i !== menu.connectorIndex);
-                                            updateSheet({ storedConnectors: next });
-                                        }
+                                        deleteSelected();
                                         setMenu({ ...menu, visible: false });
                                     }}
-                                >Delete Connection</button>
-                                <button
-                                    className={`block w-full text-left px-3 py-1 ${theme === 'dark' ? 'hover:bg-slate-700' : 'hover:bg-gray-100'}`}
-                                    onClick={() => {
-                                        setEditMode(true);
-                                        setMenu({ ...menu, visible: false });
-                                    }}
-                                >Properties</button>
-                                <div className="border-t my-1" style={{ borderColor: colors.border }}></div>
-                                <button
-                                    className={`block w-full text-left px-3 py-1 ${theme === 'dark' ? 'hover:bg-slate-700' : 'hover:bg-gray-100'}`}
-                                    onClick={() => { copyConnectorProperties(menu.connectorIndex!); setMenu({ ...menu, visible: false }); }}
-                                >Copy Properties</button>
-                                <button
-                                    className={`block w-full text-left px-3 py-1 disabled:opacity-50 ${theme === 'dark' ? 'hover:bg-slate-700' : 'hover:bg-gray-100'}`}
-                                    onClick={() => { pasteConnectorProperties(menu.connectorIndex!); setMenu({ ...menu, visible: false }); }}
-                                    disabled={!copiedConnectorProperties}
-                                >Paste Properties</button>
+                                >{selectedConnectorIndices.length > 1 ? `Delete ${selectedConnectorIndices.length} Connectors` : "Delete Connection"}</button>
+                                {selectedConnectorIndices.length === 1 && (
+                                    <>
+                                        <button
+                                            className={`block w-full text-left px-3 py-1 ${theme === 'dark' ? 'hover:bg-slate-700' : 'hover:bg-gray-100'}`}
+                                            onClick={() => {
+                                                setEditMode(true);
+                                                setMenu({ ...menu, visible: false });
+                                            }}
+                                        >Properties</button>
+                                        <div className="border-t my-1" style={{ borderColor: colors.border }}></div>
+                                        <button
+                                            className={`block w-full text-left px-3 py-1 ${theme === 'dark' ? 'hover:bg-slate-700' : 'hover:bg-gray-100'}`}
+                                            onClick={() => { copyConnectorProperties(menu.connectorIndex!); setMenu({ ...menu, visible: false }); }}
+                                        >Copy Properties</button>
+                                        <button
+                                            className={`block w-full text-left px-3 py-1 disabled:opacity-50 ${theme === 'dark' ? 'hover:bg-slate-700' : 'hover:bg-gray-100'}`}
+                                            onClick={() => { pasteConnectorProperties(menu.connectorIndex!); setMenu({ ...menu, visible: false }); }}
+                                            disabled={!copiedConnectorProperties}
+                                        >Paste Properties</button>
+                                    </>
+                                )}
                             </>
                         )}
 

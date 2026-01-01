@@ -23,7 +23,7 @@ export const ChatPanel = () => {
         activeSheetId,
         getCurrentSheet,
         selectedItemIds,
-        selectedConnectorIndex
+        selectedConnectorIndices
     } = useStore();
     const { colors } = useTheme();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -36,7 +36,7 @@ export const ChatPanel = () => {
     const [availableItems, setAvailableItems] = useState<ItemData[]>([]);
 
     // Calculate selected context
-    const selectedCount = (selectedItemIds?.length || 0) + (selectedConnectorIndex !== null ? 1 : 0);
+    const selectedCount = (selectedItemIds?.length || 0) + (selectedConnectorIndices?.length || 0);
 
     const insertSelectionContext = useCallback(() => {
         const currentSheet = getCurrentSheet();
@@ -60,20 +60,24 @@ export const ChatPanel = () => {
         }
 
         // Add connectors
-        if (selectedConnectorIndex !== null && selectedConnectorIndex >= 0) {
-            const conn = currentSheet.storedConnectors[selectedConnectorIndex];
-            if (conn) {
-                const source = conn.sourceItem?.name || 'Unknown';
-                const target = conn.targetItem?.name || 'Unknown';
-                contextStr += `[Context: Connection ${source}->${target}] `;
-            }
+        if (selectedConnectorIndices && selectedConnectorIndices.length > 0) {
+            selectedConnectorIndices.forEach(idx => {
+                if (idx >= 0) {
+                    const conn = currentSheet.storedConnectors[idx];
+                    if (conn) {
+                        const source = conn.sourceItem?.name || 'Unknown';
+                        const target = conn.targetItem?.name || 'Unknown';
+                        contextStr += `[Context: Connection ${source}->${target}] `;
+                    }
+                }
+            });
         }
 
         if (contextStr) {
             setInput(prev => prev + (prev ? " " : "") + contextStr);
             if (textareaRef.current) textareaRef.current.focus();
         }
-    }, [selectedItemIds, selectedConnectorIndex, getCurrentSheet]);
+    }, [selectedItemIds, selectedConnectorIndices, getCurrentSheet]);
 
     // Fetch available items on mount
     useEffect(() => {
