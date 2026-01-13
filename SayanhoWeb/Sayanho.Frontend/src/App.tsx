@@ -14,6 +14,11 @@ import { AutoRatingResultDialog } from './components/AutoRatingResultDialog';
 import { SaveProjectDialog } from './components/SaveProjectDialog';
 import { NetworkMonitor } from './components/NetworkMonitor';
 
+// Layout Designer imports
+import { LayoutDesigner, LayoutDesignerRef } from './components/LayoutDesigner';
+import { ViewModeToggle } from './components/ViewModeToggle';
+import { useLayoutStore } from './store/useLayoutStore';
+
 import { api } from './services/api';
 import { useStore } from './store/useStore';
 import { useTheme } from './context/ThemeContext';
@@ -28,6 +33,9 @@ function DesignerApp() {
     const { getCurrentSheet, setSheet, updateSheet, sheets, setSheets, applyAutoRatingResults, undo, redo, calculateNetwork, addItem, selectItem, showCurrentValues, toggleShowCurrentValues, isPropertiesPanelOpen, isChatOpen, toggleChat } = useStore();
     const currentSheet = getCurrentSheet();
     const { colors, theme } = useTheme();
+
+    // Layout store - for view mode toggle
+    const { activeView } = useLayoutStore();
 
     // UI State
     const [showLeftPanel, setShowLeftPanel] = useState(true);
@@ -56,6 +64,7 @@ function DesignerApp() {
     const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
 
     const canvasRef = useRef<CanvasRef>(null);
+    const layoutRef = useRef<LayoutDesignerRef>(null);
 
     // Set CSS custom property for mobile viewport height
     useEffect(() => {
@@ -105,22 +114,26 @@ function DesignerApp() {
     // Keyboard Shortcuts for Undo/Redo
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.defaultPrevented) return;
             if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
                 e.preventDefault();
                 if (e.shiftKey) {
-                    redo();
+                    if (activeView === 'layout') useLayoutStore.getState().redo();
+                    else redo();
                 } else {
-                    undo();
+                    if (activeView === 'layout') useLayoutStore.getState().undo();
+                    else undo();
                 }
             } else if ((e.ctrlKey || e.metaKey) && e.key === 'y') {
                 e.preventDefault();
-                redo();
+                if (activeView === 'layout') useLayoutStore.getState().redo();
+                else redo();
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [undo, redo]);
+    }, [activeView, undo, redo]);
 
     // Quick Save: If we know the project ID, overwrite it. If not, open dialog.
     const handleSave = async () => {
@@ -420,22 +433,32 @@ function DesignerApp() {
             canvasRef.current.fitView();
         }
     };
-    const handleSaveImage = () => canvasRef.current?.saveImage();
+    const handleSaveImage = () => {
+        if (activeView === 'layout') {
+            layoutRef.current?.saveImage();
+            return;
+        }
+        canvasRef.current?.saveImage();
+    };
 
     return (
         <div className="flex flex-col h-screen overflow-hidden select-none bg-background text-foreground relative">
             <MobileDetector />
 
-            {/* Full Screen Canvas */}
-            <div className="absolute inset-0 z-0">
-                <Canvas
-                    ref={canvasRef}
-                    onScaleChange={setScale}
-                    panMode={panMode}
-                    isAddTextMode={isAddTextMode}
-                    onAddTextComplete={() => setIsAddTextMode(false)}
-                />
-            </div>
+            {/* Full Screen Canvas - Conditional based on view mode */}
+            {activeView === 'layout' ? (
+                <LayoutDesigner ref={layoutRef} showLeftPanel={showLeftPanel} />
+            ) : (
+                <div className="absolute inset-0 z-0">
+                    <Canvas
+                        ref={canvasRef}
+                        onScaleChange={setScale}
+                        panMode={panMode}
+                        isAddTextMode={isAddTextMode}
+                        onAddTextComplete={() => setIsAddTextMode(false)}
+                    />
+                </div>
+            )}
 
             {/* Top Bar Area - Menu & Toolbar */}
             <div className="absolute top-0 left-0 right-0 z-50 p-2 pointer-events-none flex justify-between items-start">
@@ -461,59 +484,70 @@ function DesignerApp() {
                     </div>
                 )}
 
-                {/* Toolbar - Centered relative to screen, independent of menu */}
-                <div className="absolute left-1/2 transform -translate-x-1/2 top-0 pointer-events-auto">
-                    <div className="premium-glass rounded-xl p-1.5 flex items-center h-[36px]"> {/* Fixed height to match menu */}
-                        <Toolbar
-                            onLoad={handleOpen}
-                            onZoomIn={handleZoomIn}
-                            onZoomOut={handleZoomOut}
-                            onSetZoom={handleSetZoom}
-                            onResetZoom={handleResetZoom}
-                            onFitContent={handleFitContent}
-                            scale={scale}
-                            showLeftPanel={showLeftPanel}
-                            onToggleLeftPanel={() => setShowLeftPanel(!showLeftPanel)}
-                            showMenu={showMenu}
-                            onToggleMenu={() => setShowMenu(!showMenu)}
-                            showChat={isChatOpen}
-                            onToggleChat={toggleChat}
-                            onAutoRate={handleAutoRate}
-                            onAddText={() => setIsAddTextMode(!isAddTextMode)}
-                            isAddTextMode={isAddTextMode}
-                            onUndo={undo}
-                            onRedo={redo}
-                            panMode={panMode}
-                            onSetPanMode={setPanMode}
-                            onCalculate={calculateNetwork}
-                            onCopyTrace={handleCopyTrace}
-                            showCurrentValues={showCurrentValues}
-                            onToggleShowCurrentValues={toggleShowCurrentValues}
-                        />
-                    </div>
+                {/* View Mode Toggle (SLD/Layout) */}
+                <div className="premium-glass rounded-full px-2 py-1 z-50 pointer-events-auto" style={{ backgroundColor: colors.menuBackground }}>
+                    <ViewModeToggle />
                 </div>
+
+                {/* Toolbar - Centered (SLD mode only) */}
+                {activeView === 'sld' && (
+                    <div className="absolute left-1/2 transform -translate-x-1/2 top-0 pointer-events-auto">
+                        <div className="premium-glass rounded-xl p-1.5 flex items-center h-[36px]">
+                            <Toolbar
+                                onLoad={handleOpen}
+                                onZoomIn={handleZoomIn}
+                                onZoomOut={handleZoomOut}
+                                onSetZoom={handleSetZoom}
+                                onResetZoom={handleResetZoom}
+                                onFitContent={handleFitContent}
+                                scale={scale}
+                                showLeftPanel={showLeftPanel}
+                                onToggleLeftPanel={() => setShowLeftPanel(!showLeftPanel)}
+                                showMenu={showMenu}
+                                onToggleMenu={() => setShowMenu(!showMenu)}
+                                showChat={isChatOpen}
+                                onToggleChat={toggleChat}
+                                onAutoRate={handleAutoRate}
+                                onAddText={() => setIsAddTextMode(!isAddTextMode)}
+                                isAddTextMode={isAddTextMode}
+                                onUndo={undo}
+                                onRedo={redo}
+                                panMode={panMode}
+                                onSetPanMode={setPanMode}
+                                onCalculate={calculateNetwork}
+                                onCopyTrace={handleCopyTrace}
+                                showCurrentValues={showCurrentValues}
+                                onToggleShowCurrentValues={toggleShowCurrentValues}
+                            />
+                        </div>
+                    </div>
+                )}
             </div>
 
-            {/* Left Sidebar - Floating & Extended to Bottom - Slimmer */}
-            {showLeftPanel && (
+            {/* Left Sidebar (SLD mode only) */}
+            {activeView === 'sld' && showLeftPanel && (
                 <div className="absolute left-4 top-12 bottom-4 w-56 z-40 premium-glass rounded-xl overflow-hidden flex flex-col transition-all duration-300 animate-slide-in-left">
                     <Sidebar />
                 </div>
             )}
 
-            {/* Right Properties Panel - Floating & Contextual - Slimmer */}
-            <div className={`absolute right-4 top-12 bottom-4 w-64 z-40 pointer-events-none transition-opacity duration-300 ${isPropertiesPanelOpen ? 'opacity-100' : 'opacity-0'}`}>
-                {isPropertiesPanelOpen && (
-                    <div className="pointer-events-auto h-full premium-glass rounded-xl overflow-hidden flex flex-col animate-slide-in-right">
-                        <PropertiesPanel />
-                    </div>
-                )}
-            </div>
+            {/* Right Properties Panel (SLD mode only) */}
+            {activeView === 'sld' && (
+                <div className={`absolute right-4 top-12 bottom-4 w-64 z-40 pointer-events-none transition-opacity duration-300 ${isPropertiesPanelOpen ? 'opacity-100' : 'opacity-0'}`}>
+                    {isPropertiesPanelOpen && (
+                        <div className="pointer-events-auto h-full premium-glass rounded-xl overflow-hidden flex flex-col animate-slide-in-right">
+                            <PropertiesPanel />
+                        </div>
+                    )}
+                </div>
+            )}
 
-            {/* Bottom Tabs - Positioned after Sidebar and before Properties */}
-            <div className={`absolute bottom-2 z-30 premium-glass rounded-full px-4 py-0.5 animate-slide-in-bottom transition-all duration-300 ${showLeftPanel ? 'left-64' : 'left-4'} right-80`}>
-                <CanvasTabs />
-            </div>
+            {/* Bottom Tabs (SLD mode only) */}
+            {activeView === 'sld' && (
+                <div className={`absolute bottom-2 z-30 premium-glass rounded-full px-4 py-0.5 animate-slide-in-bottom transition-all duration-300 ${showLeftPanel ? 'left-64' : 'left-4'} right-80`}>
+                    <CanvasTabs />
+                </div>
+            )}
 
             {/* Chat Panel - Floating */}
             <ChatPanel />

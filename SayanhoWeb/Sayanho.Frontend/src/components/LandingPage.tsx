@@ -34,20 +34,26 @@ const LandingPage: React.FC = () => {
         },
         {
             id: 1,
-            title: 'Auto-Rating Engine',
-            desc: 'Calculate load currents and auto-size MCBs, MCCBs, cables and wires.',
-            image: '/assets/landing/auto_rating_video.webp'
+            title: 'Smart Layout Designer',
+            desc: 'Upload floor plans, detect rooms automatically, and place equipment in a 2D/3D workspace.',
+            image: '/assets/landing/layout_designer.webp'
         },
         {
             id: 2,
-            title: 'LT Panel Designer',
-            desc: 'Configure cubicle panels with up to 3 incomers, bus couplers, and outgoings.',
-            image: '/assets/landing/cubicle_panel.webp'
+            title: 'Auto-Rating Engine',
+            desc: 'Calculate load currents and auto-size MCBs, MCCBs, cables and wires instantly.',
+            image: '/assets/landing/auto_rating_video.webp'
         },
         {
             id: 3,
+            title: 'Bi-directional Magic Sync',
+            desc: 'Seamlessly sync components between Single-Line Diagrams and architectural layouts.',
+            image: '/assets/landing/magic_sync.webp'
+        },
+        {
+            id: 4,
             title: 'AI Assistant',
-            desc: 'Query the component database and get help with natural language.',
+            desc: 'Query the component database and get engineering help with natural language.',
             image: '/assets/landing/ai_chat_video.webp'
         }
     ];
@@ -78,10 +84,10 @@ const LandingPage: React.FC = () => {
             {/* Hero Section */}
             <header className="lp-hero">
                 <div className="hero-text">
-                    <h1>Electrical Single-Line Diagram Designer</h1>
+                    <h1>Sayanho: Intelligent Electrical Design Suite</h1>
                     <p>
-                        Professional tool for designing distribution systems. Auto-rate components,
-                        calculate voltage drop, generate cost estimates, and design LT panels.
+                        Comprehensive tool for SLD design, architectural layouts, and automated engineering.
+                        Calculate voltage drop, auto-rate switchgear, and sync designs across workspace views.
                     </p>
                     <div className="hero-btns">
                         <button className="btn-primary" onClick={() => navigate('/design')}>
@@ -101,7 +107,7 @@ const LandingPage: React.FC = () => {
             {/* Interactive Features Section - Manual Tabs Only */}
             <section id="features" className="lp-features">
                 <h2>Key Features</h2>
-                <p className="section-subtitle">Click on each feature to explore</p>
+                <p className="section-subtitle">Intelligent tools for modern electrical engineering</p>
 
                 <div className="features-showcase">
                     <div className="feature-tabs">
@@ -137,56 +143,62 @@ const LandingPage: React.FC = () => {
 
                 <div className="specs-grid">
                     <div className="spec-card">
-                        <h3>Distribution Equipment</h3>
+                        <h3>Layout Designer</h3>
                         <ul>
-                            <li>VTPN / HTPN Distribution Boards</li>
-                            <li>SPN DB with configurable ways</li>
-                            <li>LT Cubicle Panels (ACB/MCCB/SFU)</li>
+                            <li>AI-powered Room Detection</li>
+                            <li>Architectural Wall/Door Drafting</li>
+                            <li>3D Floor Plan Visualization</li>
+                            <li>Scale Calibration & Measurements</li>
                         </ul>
                     </div>
 
                     <div className="spec-card">
-                        <h3>Switchgear</h3>
+                        <h3>Distribution & Sync</h3>
                         <ul>
-                            <li>Main Switch (TPN SFU)</li>
-                            <li>Change Over Switch (Open/Enclosed)</li>
-                            <li>MCB, MCCB, MCB Isolator</li>
+                            <li>Bi-directional Magic Sync (SLD ↔ Layout)</li>
+                            <li>Multi-Sheet Portal Linking</li>
+                            <li>LT Cubicle Panel Configuration</li>
+                            <li>Real-time Constraint Validation</li>
                         </ul>
                     </div>
 
                     <div className="spec-card">
-                        <h3>Cables & Wiring</h3>
+                        <h3>Switchgear & Load</h3>
                         <ul>
-                            <li>FR / FRLS / ZHFR types</li>
-                            <li>Copper and Aluminum conductors</li>
-                            <li>Various laying methods</li>
+                            <li>VTPN / HTPN / SPN DB support</li>
+                            <li>MCB, MCCB, ACB, SFU Selection</li>
+                            <li>Automated Cable Sizing</li>
+                            <li>Custom Load Point Definitions</li>
                         </ul>
                     </div>
 
                     <div className="spec-card">
-                        <h3>Load Points</h3>
+                        <h3>Wiring & Analysis</h3>
                         <ul>
-                            <li>Lights, Fans, AC Points</li>
-                            <li>Switch boards (5A/15A)</li>
-                            <li>Socket outlets</li>
+                            <li>Orthogonal (Manhattan) Wiring</li>
+                            <li>AutoCAD-style Arc Routing</li>
+                            <li>Automated Voltage Drop Analysis</li>
+                            <li>Excel Cost Estimate Generation</li>
                         </ul>
                     </div>
 
                     <div className="spec-card">
-                        <h3>Analysis Tools</h3>
+                        <h3>Modern Architecture</h3>
                         <ul>
-                            <li>Network current calculation</li>
-                            <li>Voltage drop analysis (PDF)</li>
-                            <li>Cost estimation (Excel)</li>
+                            <li>Fast Canvas Rendering (React Konva)</li>
+                            <li>Zustand State Management</li>
+                            <li>Dark/Light Mode Support</li>
+                            <li>Local Persistent Project Storage</li>
                         </ul>
                     </div>
 
                     <div className="spec-card">
-                        <h3>Project Features</h3>
+                        <h3>Smart Features</h3>
                         <ul>
-                            <li>Save/Load projects</li>
-                            <li>Multi-sheet diagrams</li>
-                            <li>Undo/Redo support</li>
+                            <li>LLM-Powered Technical Assistant</li>
+                            <li>Smart Layout Recognition</li>
+                            <li>Undo/Redo with History Snapshots</li>
+                            <li>Mobile-responsive Viewer</li>
                         </ul>
                     </div>
                 </div>

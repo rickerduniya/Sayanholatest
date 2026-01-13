@@ -302,6 +302,30 @@ const DISTRIBUTION_ITEMS: ItemRule[] = [
         },
         requiresBackendInit: true,
         defaultWay: "2+4"
+    },
+    {
+        name: "Busbar Chamber",
+        category: "distribution",
+        geometry: {
+            // Dynamic - calculated by GeometryCalculator based on Length
+            size: { width: 360, height: 150 },
+            connectionPoints: {
+                "in": { x: 180, y: 0 },
+                "out1": { x: 30, y: 150 },
+                "out2": { x: 90, y: 150 },
+                "out3": { x: 150, y: 150 },
+                "out4": { x: 210, y: 150 },
+                "out5": { x: 270, y: 150 },
+                "out6": { x: 330, y: 150 }
+            }
+        },
+        defaults: {
+            properties: {
+                "Length": "1",
+                "Company": "Havells"
+            }
+        },
+        requiresBackendInit: true
     }
 ];
 

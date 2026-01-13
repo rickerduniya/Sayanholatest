@@ -28,6 +28,47 @@ const OPTIONS = {
     TYPE: ["Lighting", "Appliance", "Other"],
     SWITCH_VOLTAGE: ["230V DP", "415V TPN", "415V FP"],
     FINISHING_METHOD: ["Crimping", "Soldering"]
+
+};
+
+// Reusable Dropdown Component with Auto-Select Logic
+const DropdownField = ({ label, value, options, onChange, editMode, colors, placeholder = "Select..." }: any) => {
+    useEffect(() => {
+        if (editMode && options.length === 1 && value !== options[0]) {
+            onChange(options[0]);
+        }
+    }, [editMode, options, value, onChange]);
+
+    return (
+        <div className="mb-3">
+            {label && <label className="text-xs block mb-1 font-medium" style={{ color: colors.text, opacity: 0.8 }}>{label}</label>}
+            {editMode ? (
+                <div className="relative">
+                    <select
+                        value={value || ""}
+                        onChange={(e) => onChange(e.target.value)}
+                        className="w-full px-3 py-2 text-xs rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white/50 dark:bg-black/20 border border-white/20 dark:border-white/10"
+                        style={{ color: colors.text }}
+                    >
+                        <option value="" className="bg-white dark:bg-slate-800">{placeholder}</option>
+                        {options.map((opt: string) => (
+                            <option key={opt} value={opt} className="bg-white dark:bg-slate-800">{opt}</option>
+                        ))}
+                    </select>
+                    <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
+                        <ChevronDown size={12} style={{ color: colors.text }} />
+                    </div>
+                </div>
+            ) : (
+                <div
+                    className="text-xs font-medium px-3 py-2 rounded-lg border bg-white/30 dark:bg-white/5 border-white/20 dark:border-white/10"
+                    style={{ color: colors.text }}
+                >
+                    {value || "—"}
+                </div>
+            )}
+        </div>
+    );
 };
 
 export const PropertiesPanel: React.FC = React.memo(() => {
@@ -54,11 +95,13 @@ export const PropertiesPanel: React.FC = React.memo(() => {
     const [editedLaying, setEditedLaying] = useState<Record<string, string>>({});
     const [editedAltComp1, setEditedAltComp1] = useState<string>("");
     const [editedAltComp2, setEditedAltComp2] = useState<string>("");
+    const [dynamicSelectionError, setDynamicSelectionError] = useState<string | null>(null);
 
     // Dynamic Property State
     const [availableProperties, setAvailableProperties] = useState<Record<string, string>[]>([]);
     const [dbIncomerOptions, setDbIncomerOptions] = useState<string[]>([]);
     const [dbOutgoingOptions, setDbOutgoingOptions] = useState<string[]>([]);
+    const [dbOutgoingFullProperties, setDbOutgoingFullProperties] = useState<Record<string, string>[]>([]);
     const [layingOptions, setLayingOptions] = useState<Record<string, string>[]>([]);
 
     // Helper to select default rating >= threshold
@@ -100,9 +143,37 @@ export const PropertiesPanel: React.FC = React.memo(() => {
         prev: Record<string, string>[],
         oldWayCount: number,
         newWayCount: number,
-        defaultRating: string
+        defaultRating: string,
+        fullProperties: Record<string, string>[]
     ): Record<string, string>[] => {
         if (newWayCount <= 0) return [];
+
+        // Determine preferred company from existing items
+        const companyCounts: Record<string, number> = {};
+        let preferredCompany = "";
+
+        prev.forEach(item => {
+            if (item && item["Company"]) {
+                companyCounts[item["Company"]] = (companyCounts[item["Company"]] || 0) + 1;
+            }
+        });
+
+        // Find the most frequent company
+        let maxCount = 0;
+        for (const [comp, count] of Object.entries(companyCounts)) {
+            if (count > maxCount) {
+                maxCount = count;
+                preferredCompany = comp;
+            }
+        }
+
+        // Find default props, prioritizing the preferred company
+        let defaultProps = fullProperties.find(p => p["Current Rating"] === defaultRating && p["Company"] === preferredCompany);
+
+        // Fallback if no match with preferred company
+        if (!defaultProps) {
+            defaultProps = fullProperties.find(p => p["Current Rating"] === defaultRating) || { "Current Rating": defaultRating };
+        }
 
         if (itemName === "HTPN") {
             let effectiveOldWayCount = oldWayCount;
@@ -116,9 +187,9 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                     if (effectiveOldWayCount > 0 && i < effectiveOldWayCount) {
                         const oldIndex = (phaseIndex * effectiveOldWayCount) + i;
                         const existing = prev[oldIndex];
-                        next.push(existing ? { ...existing } : { "Current Rating": defaultRating });
+                        next.push(existing ? { ...existing } : { ...defaultProps });
                     } else {
-                        next.push({ "Current Rating": defaultRating });
+                        next.push({ ...defaultProps });
                     }
                 }
             }
@@ -130,7 +201,7 @@ export const PropertiesPanel: React.FC = React.memo(() => {
         if (base.length < totalSlots) {
             const missing = totalSlots - base.length;
             for (let i = 0; i < missing; i++) {
-                base.push({ "Current Rating": defaultRating });
+                base.push({ ...defaultProps });
             }
         }
         return base;
@@ -164,6 +235,7 @@ export const PropertiesPanel: React.FC = React.memo(() => {
             if (!selectedItem) return;
 
             setIsLoadingProperties(true);
+            setDynamicSelectionError(null);
             try {
                 // 1. Load main properties for the item
                 const data = await fetchProperties(selectedItem.name);
@@ -174,10 +246,9 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                     const incomerData = await fetchProperties("MCCB");
                     const outgoingData = await fetchProperties("MCB");
 
-                    // Filter outgoing for TP (Triple Pole)
-                    const tpOutgoing = sortOptionStringsAsc(
-                        outgoingData.properties
-                            .filter(p => p["Pole"] === "TP")
+                    const tpOutgoing = outgoingData.properties.filter(p => p["Pole"] === "TP");
+                    const tpOutgoingOptions = sortOptionStringsAsc(
+                        tpOutgoing
                             .map(p => p["Current Rating"])
                             .filter((v, i, a) => a.indexOf(v) === i) // Unique
                     );
@@ -189,7 +260,8 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                     );
 
                     setDbIncomerOptions(mccbIncomer);
-                    setDbOutgoingOptions(tpOutgoing);
+                    setDbOutgoingOptions(tpOutgoingOptions);
+                    setDbOutgoingFullProperties(tpOutgoing);
                 } else if (selectedItem.name === "SPN DB") {
                     const incomerData = await fetchProperties("MCB Isolator");
                     const outgoingData = await fetchProperties("MCB");
@@ -203,15 +275,16 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                     );
 
                     // Outgoing SP
-                    const spOutgoing = sortOptionStringsAsc(
-                        outgoingData.properties
-                            .filter(p => p["Pole"] === "SP")
+                    const spOutgoing = outgoingData.properties.filter(p => p["Pole"] === "SP");
+                    const spOutgoingOptions = sortOptionStringsAsc(
+                        spOutgoing
                             .map(p => p["Current Rating"])
                             .filter((v, i, a) => a.indexOf(v) === i)
                     );
 
                     setDbIncomerOptions(dpIncomer);
-                    setDbOutgoingOptions(spOutgoing);
+                    setDbOutgoingOptions(spOutgoingOptions);
+                    setDbOutgoingFullProperties(spOutgoing);
                 } else if (selectedItem.name === "HTPN") {
                     const incomerData = await fetchProperties("MCB"); // FP
                     const outgoingData = await fetchProperties("MCB"); // SP
@@ -223,17 +296,17 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                             .filter((v, i, a) => a.indexOf(v) === i)
                     );
 
-                    const spOutgoing = sortOptionStringsAsc(
-                        outgoingData.properties
-                            .filter(p => p["Pole"] === "SP")
+                    const spOutgoing = outgoingData.properties.filter(p => p["Pole"] === "SP");
+                    const spOutgoingOptions = sortOptionStringsAsc(
+                        spOutgoing
                             .map(p => p["Current Rating"])
                             .filter((v, i, a) => a.indexOf(v) === i)
                     );
 
                     setDbIncomerOptions(fpIncomer);
-                    setDbOutgoingOptions(spOutgoing);
-                    setDbIncomerOptions(fpIncomer);
-                    setDbOutgoingOptions(spOutgoing);
+                    setDbOutgoingOptions(spOutgoingOptions);
+                    setDbOutgoingFullProperties(spOutgoing);
+
                 } else if (selectedItem.name === "LT Cubical Panel") {
                     // Fetch all device types for Panel Configuration
                     const mccbData = await fetchProperties("MCCB");
@@ -252,6 +325,7 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                 } else {
                     setDbIncomerOptions([]);
                     setDbOutgoingOptions([]);
+                    setDbOutgoingFullProperties([]);
                 }
 
             } catch (error) {
@@ -265,6 +339,7 @@ export const PropertiesPanel: React.FC = React.memo(() => {
             if (!selectedConnector) return;
 
             setIsLoadingProperties(true);
+            setDynamicSelectionError(null);
             try {
                 const materialName = selectedConnector.materialType === "Wiring" ? "Wiring" : "Cable";
                 const data = await fetchProperties(materialName);
@@ -293,15 +368,23 @@ export const PropertiesPanel: React.FC = React.memo(() => {
             setAvailableProperties([]);
             setDbIncomerOptions([]);
             setDbOutgoingOptions([]);
+            setDbOutgoingFullProperties([]);
             setLayingOptions([]);
+            setDynamicSelectionError(null);
         }
     }, [selectedItem?.name, selectedConnector?.materialType]); // Only re-fetch when TYPE changes
 
     // Effect 2: Sync form state with store data (when selection or properties change)
     useEffect(() => {
+        setDynamicSelectionError(null);
         if (selectedItem) {
             if (selectedItem.properties && selectedItem.properties[0]) {
-                setEditedProperties({ ...selectedItem.properties[0] });
+                // Busbar Chamber Default
+                if (selectedItem.name === "Busbar Chamber" && !selectedItem.properties[0]?.["Length"]) {
+                    setEditedProperties({ ...selectedItem.properties[0], "Length": "1" });
+                } else {
+                    setEditedProperties({ ...selectedItem.properties[0] });
+                }
             } else {
                 // Check if it's a load item with defaults
                 if (LOAD_ITEM_DEFAULTS[selectedItem.name]) {
@@ -312,6 +395,8 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                         "Voltage": "230 V",
                         "Frequency": "50 Hz"
                     });
+                } else if (selectedItem.name === "Busbar Chamber") {
+                    setEditedProperties({ "Length": "1" });
                 } else {
                     setEditedProperties({});
                 }
@@ -348,7 +433,7 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                     // Calculate expected slots based on Way property
                     const wayStr = selectedItem.properties?.[0]?.["Way"] || DefaultRulesEngine.getDefaultWay(selectedItem.name) || "0";
                     const waysCount = parseWayCount(selectedItem.name, wayStr);
-                    setEditedOutgoing(resizeDbOutgoing(selectedItem.name, [], 0, waysCount, defaultRating));
+                    setEditedOutgoing(resizeDbOutgoing(selectedItem.name, [], 0, waysCount, defaultRating, dbOutgoingFullProperties));
                 } else {
                     setEditedOutgoing([]);
                 }
@@ -391,6 +476,7 @@ export const PropertiesPanel: React.FC = React.memo(() => {
             setEditedLaying({});
             setEditedAltComp1("");
             setEditedAltComp2("");
+            setDynamicSelectionError(null);
         }
     }, [
         selectedItemId,
@@ -406,7 +492,9 @@ export const PropertiesPanel: React.FC = React.memo(() => {
         selectedConnector?.laying,
         selectedConnector?.alternativeCompany1,
         selectedConnector?.alternativeCompany2,
-        dbOutgoingOptions // Important dependency for default rating logic
+        selectedConnector?.alternativeCompany2,
+        dbOutgoingOptions, // Important dependency for default rating logic
+        dbOutgoingFullProperties
     ]); // React to selection changes and property updates, but NOT position changes
 
 
@@ -469,7 +557,47 @@ export const PropertiesPanel: React.FC = React.memo(() => {
             const threshold = DefaultRulesEngine.getDefaultOutgoingThreshold(selectedItem.name);
             const defaultRating = selectDefaultRating(dbOutgoingOptions, threshold);
 
-            setEditedOutgoing(prev => resizeDbOutgoing(selectedItem.name, prev, oldWaysCount, newWaysCount, defaultRating));
+            setEditedOutgoing(prev => resizeDbOutgoing(selectedItem.name, prev, oldWaysCount, newWaysCount, defaultRating, dbOutgoingFullProperties));
+        }
+
+        if (availableProperties.length > 0) {
+            const dynamicKeys = Object.keys(availableProperties[0]).filter(k => k !== "Item" && k !== "Rate" && k !== "Description" && k !== "GS");
+            const candidates = availableProperties.filter(row =>
+                dynamicKeys.every(k => {
+                    const v = (newProperties[k] || "").trim();
+                    return !v || row[k] === v;
+                })
+            );
+
+            const isCompleteSelection = dynamicKeys.every(k => (newProperties[k] || "").trim() !== "");
+
+            if (candidates.length === 0) {
+                setDynamicSelectionError('Invalid combo box selection. Please select the combo box properly.');
+            } else if (isCompleteSelection && candidates.length !== 1) {
+                setDynamicSelectionError('Multiple matches found for this selection. Please select the combo box properly.');
+            } else {
+                setDynamicSelectionError(null);
+            }
+
+            if (candidates.length === 1) {
+                const match = candidates[0];
+                const merged: Record<string, string> = { ...newProperties };
+
+                dynamicKeys.forEach(k => {
+                    if (!merged[k] || merged[k].trim() === "") {
+                        const v = (match[k] || "").toString();
+                        if (v) merged[k] = v;
+                    }
+                });
+
+                const description = (match["Description"] || "").toString();
+                if (description) {
+                    merged["Description"] = description;
+                }
+
+                setEditedProperties(merged);
+                return;
+            }
         }
 
         setEditedProperties(newProperties);
@@ -487,6 +615,21 @@ export const PropertiesPanel: React.FC = React.memo(() => {
             newAcc["finishing_method"] = "Crimping";
         }
 
+        // Auto-set endbox count
+        if (key === "endbox_required" && value === "true" && !newAcc["number_of_endbox"]) {
+            newAcc["number_of_endbox"] = "2";
+        }
+
+        // Auto-set gland count
+        if (key === "glands_required" && value === "true" && !newAcc["number_of_glands"]) {
+            newAcc["number_of_glands"] = "2";
+        }
+
+        // Auto-set onboard count
+        if (key === "orboard_required" && value === "true" && !newAcc["number_of_onboard"]) {
+            newAcc["number_of_onboard"] = "1";
+        }
+
         setEditedAccessories(newAcc);
     };
 
@@ -500,6 +643,13 @@ export const PropertiesPanel: React.FC = React.memo(() => {
             newOutgoing[index] = {};
         }
         newOutgoing[index][key] = value;
+        // If rating changes, update other properties
+        if (key === "Current Rating" && dbOutgoingFullProperties.length > 0) {
+            const match = dbOutgoingFullProperties.find(p => p["Current Rating"] === value);
+            if (match) {
+                newOutgoing[index] = { ...match };
+            }
+        }
         setEditedOutgoing(newOutgoing);
     };
 
@@ -526,9 +676,55 @@ export const PropertiesPanel: React.FC = React.memo(() => {
 
     const handleSave = () => {
         if (selectedItem && currentSheet && updateSheet) {
+            if (selectedItem.name === "Busbar Chamber") {
+                const lengthStr = (editedProperties["Length"] || "1").toString();
+                const length = parseFloat(lengthStr);
+                const validLength = isNaN(length) ? 1 : length;
+                const nextCount = Math.max(1, Math.floor(validLength * 6));
+
+                const connected = currentSheet.storedConnectors.filter(c =>
+                    c.sourceItem.uniqueID === selectedItem.uniqueID || c.targetItem.uniqueID === selectedItem.uniqueID
+                );
+
+                const getIndex = (key: string): number | null => {
+                    if (!key) return null;
+                    if (!key.toLowerCase().startsWith('out')) return null;
+                    const idxPart = key.substring(3).split('_')[0];
+                    const idx = parseInt(idxPart, 10);
+                    return Number.isFinite(idx) ? idx : null;
+                };
+
+                const invalid = connected.some(c => {
+                    const key = c.sourceItem.uniqueID === selectedItem.uniqueID ? c.sourcePointKey : c.targetPointKey;
+                    const idx = getIndex(key);
+                    return idx !== null && idx > nextCount;
+                });
+
+                if (invalid) {
+                    alert(`Cannot save. This Length would remove some existing Busbar outgoing connection points (out${nextCount + 1}+). Please delete those connectors or increase the Length.`);
+                    return;
+                }
+            }
+            if (availableProperties.length > 0) {
+                const dynamicKeys = Object.keys(availableProperties[0]).filter(k => k !== "Item" && k !== "Rate" && k !== "Description" && k !== "GS");
+                const candidates = availableProperties.filter(row =>
+                    dynamicKeys.every(k => (editedProperties[k] || "").trim() !== "" && row[k] === (editedProperties[k] || "").trim())
+                );
+                if (candidates.length !== 1) {
+                    alert('Please select the combo box properly.');
+                    return;
+                }
+            }
             const updatedItems = currentSheet.canvasItems.map(item => {
                 if (item.uniqueID === selectedItemId) {
                     let finalAccessories = [editedAccessories];
+
+                    // Safely ensure defaults are present if required flags are true
+                    const acc = finalAccessories[0];
+                    if (acc["endbox_required"] === "true" && !acc["number_of_endbox"]) acc["number_of_endbox"] = "2";
+                    if (acc["glands_required"] === "true" && !acc["number_of_glands"]) acc["number_of_glands"] = "2";
+                    if (acc["finishing_required"] === "true" && !acc["number_of_finishing"]) acc["number_of_finishing"] = "2";
+                    if (acc["orboard_required"] === "true" && !acc["number_of_onboard"]) acc["number_of_onboard"] = "1";
 
                     // Validation for Main Switch End Box
                     if (item.name === "Main Switch" && editedAccessories["endbox_required"] === "true") {
@@ -578,6 +774,16 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                 setEditMode(false);
                 return;
             }
+            if (availableProperties.length > 0) {
+                const dynamicKeys = Object.keys(availableProperties[0]).filter(k => k !== "Item" && k !== "Rate" && k !== "Description" && k !== "GS");
+                const candidates = availableProperties.filter(row =>
+                    dynamicKeys.every(k => (editedProperties[k] || "").trim() !== "" && row[k] === (editedProperties[k] || "").trim())
+                );
+                if (candidates.length !== 1) {
+                    alert('Please select the combo box properly.');
+                    return;
+                }
+            }
             // Connector Save Logic
             updateConnector(selectedConnectorIndex, {
                 properties: editedProperties,
@@ -593,6 +799,7 @@ export const PropertiesPanel: React.FC = React.memo(() => {
 
     const handleCancel = () => {
         setEditMode(false);
+        setDynamicSelectionError(null);
         // Reset changes
         if (selectedItem && selectedItem.properties && selectedItem.properties[0]) {
             setEditedProperties({ ...selectedItem.properties[0] });
@@ -611,38 +818,14 @@ export const PropertiesPanel: React.FC = React.memo(() => {
         values: Record<string, string> = editedProperties,
         onChange: (key: string, value: string) => void = handlePropertyChange
     ) => (
-        <div className="mb-3">
-            <label className="text-xs block mb-1 font-medium" style={{ color: colors.text, opacity: 0.8 }}>{label}</label>
-            {editMode ? (
-                <div className="relative">
-                    <select
-                        value={values[key] || ""}
-                        onChange={(e) => onChange(key, e.target.value)}
-                        className="w-full px-3 py-2 text-xs rounded-lg appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white/50 dark:bg-black/20 border border-white/20 dark:border-white/10"
-                        style={{
-                            color: colors.text,
-                        }}
-                    >
-                        <option value="" className="bg-white dark:bg-slate-800">Select...</option>
-                        {options.map(opt => (
-                            <option key={opt} value={opt} className="bg-white dark:bg-slate-800">{opt}</option>
-                        ))}
-                    </select>
-                    <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                        <ChevronDown size={12} style={{ color: colors.text }} />
-                    </div>
-                </div>
-            ) : (
-                <div
-                    className="text-xs font-medium px-3 py-2 rounded-lg border bg-white/30 dark:bg-white/5 border-white/20 dark:border-white/10"
-                    style={{
-                        color: colors.text,
-                    }}
-                >
-                    {values[key] || "—"}
-                </div>
-            )}
-        </div>
+        <DropdownField
+            label={label}
+            value={values[key]}
+            options={options}
+            onChange={(val: string) => onChange(key, val)}
+            editMode={editMode}
+            colors={colors}
+        />
     );
 
     // Helper to render a checkbox field
@@ -677,7 +860,8 @@ export const PropertiesPanel: React.FC = React.memo(() => {
         max: number = 100,
         values: Record<string, string> = editedProperties,
         onChange: (key: string, value: string) => void = handlePropertyChange,
-        defaultValue: number = 0
+        defaultValue: number = 0,
+        step: number = 1
     ) => (
         <div className="mb-3">
             <label className="text-xs block mb-1 font-medium" style={{ color: colors.text, opacity: 0.8 }}>{label}</label>
@@ -686,8 +870,13 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                     type="number"
                     min={min}
                     max={max}
+                    step={step}
                     value={values[key] || defaultValue.toString()}
-                    onChange={(e) => onChange(key, e.target.value)}
+                    onChange={(e) => {
+                        const val = parseFloat(e.target.value);
+                        if (!isNaN(val) && val > max) return; // Prevent exceeding max
+                        onChange(key, e.target.value);
+                    }}
                     className="w-full px-3 py-2 text-xs rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white/50 dark:bg-black/20 border border-white/20 dark:border-white/10"
                     style={{
                         color: colors.text,
@@ -1220,6 +1409,12 @@ export const PropertiesPanel: React.FC = React.memo(() => {
 
                 {children}
 
+                {dynamicSelectionError && (
+                    <div className="text-xs text-red-500">
+                        {dynamicSelectionError}
+                    </div>
+                )}
+
                 {/* Always render generic inputs for Rate, Description if they exist in the data or are standard */}
                 <div className="mb-3">
                     <label className="text-xs block mb-1" style={{ color: colors.text, opacity: 0.8 }}>Rate</label>
@@ -1347,42 +1542,14 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                 <div className="border-b pb-2">
                     <h4 className="text-xs font-bold mb-2" style={{ color: colors.text }}>Incomer</h4>
                     <div className="mb-2">
-                        <label className="text-xs block mb-1" style={{ color: colors.text, opacity: 0.8 }}>
-                            Select I/C (Max load: {maxIncomingLoad})
-                        </label>
-                        {editMode ? (
-                            <div className="relative">
-                                <select
-                                    value={editedIncomer["Current Rating"] || ""}
-                                    onChange={(e) => handleIncomerChange("Current Rating", e.target.value)}
-                                    className="w-full px-2 py-1 text-xs border rounded appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    style={{
-                                        backgroundColor: colors.panelBackground,
-                                        color: colors.text,
-                                        borderColor: colors.border
-                                    }}
-                                >
-                                    <option value="">Select...</option>
-                                    {dbIncomerOptions.map(opt => (
-                                        <option key={opt} value={opt}>{opt}</option>
-                                    ))}
-                                </select>
-                                <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                                    <ChevronDown size={12} style={{ color: colors.text }} />
-                                </div>
-                            </div>
-                        ) : (
-                            <div
-                                className="text-xs font-medium px-2 py-1 rounded border"
-                                style={{
-                                    backgroundColor: colors.panelBackground,
-                                    color: colors.text,
-                                    borderColor: colors.border
-                                }}
-                            >
-                                {editedIncomer["Current Rating"] || "—"}
-                            </div>
-                        )}
+                        <DropdownField
+                            label={`Select I/C (Max load: ${maxIncomingLoad})`}
+                            value={editedIncomer["Current Rating"]}
+                            options={dbIncomerOptions}
+                            onChange={(val: string) => handleIncomerChange("Current Rating", val)}
+                            editMode={editMode}
+                            colors={colors}
+                        />
                     </div>
                 </div>
 
@@ -1461,34 +1628,13 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                                     >
                                         {label} (Max: {maxLoad})
                                     </label>
-                                    {editMode ? (
-                                        <select
-                                            value={editedOutgoing[i]?.["Current Rating"] || ""}
-                                            onChange={(e) => handleOutgoingChange(i, "Current Rating", e.target.value)}
-                                            className="w-full px-1 py-1 text-xs border rounded appearance-none focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                            style={{
-                                                backgroundColor: colors.panelBackground,
-                                                color: colors.text,
-                                                borderColor: colors.border
-                                            }}
-                                        >
-                                            <option value="">Select...</option>
-                                            {dbOutgoingOptions.map(opt => (
-                                                <option key={opt} value={opt}>{opt}</option>
-                                            ))}
-                                        </select>
-                                    ) : (
-                                        <div
-                                            className="text-xs font-medium px-2 py-1 rounded border"
-                                            style={{
-                                                backgroundColor: colors.panelBackground,
-                                                color: colors.text,
-                                                borderColor: colors.border
-                                            }}
-                                        >
-                                            {editedOutgoing[i]?.["Current Rating"] || "—"}
-                                        </div>
-                                    )}
+                                    <DropdownField
+                                        value={editedOutgoing[i]?.["Current Rating"]}
+                                        options={dbOutgoingOptions}
+                                        onChange={(val: string) => handleOutgoingChange(i, "Current Rating", val)}
+                                        editMode={editMode}
+                                        colors={colors}
+                                    />
                                 </div>
                             );
                         })}
@@ -1535,42 +1681,14 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                 <div className="border-b pb-2">
                     <h4 className="text-xs font-bold mb-2" style={{ color: colors.text }}>Incomer</h4>
                     <div className="mb-2">
-                        <label className="text-xs block mb-1" style={{ color: colors.text, opacity: 0.8 }}>
-                            Select I/C (Max load: {maxIncomingLoad})
-                        </label>
-                        {editMode ? (
-                            <div className="relative">
-                                <select
-                                    value={editedIncomer["Current Rating"] || ""}
-                                    onChange={(e) => handleIncomerChange("Current Rating", e.target.value)}
-                                    className="w-full px-2 py-1 text-xs border rounded appearance-none focus:outline-none focus:ring-2 focus:ring-blue-500"
-                                    style={{
-                                        backgroundColor: colors.panelBackground,
-                                        color: colors.text,
-                                        borderColor: colors.border
-                                    }}
-                                >
-                                    <option value="">Select...</option>
-                                    {dbIncomerOptions.map(opt => (
-                                        <option key={opt} value={opt}>{opt}</option>
-                                    ))}
-                                </select>
-                                <div className="absolute right-2 top-1/2 transform -translate-y-1/2 pointer-events-none">
-                                    <ChevronDown size={12} style={{ color: colors.text }} />
-                                </div>
-                            </div>
-                        ) : (
-                            <div
-                                className="text-xs font-medium px-2 py-1 rounded border"
-                                style={{
-                                    backgroundColor: colors.panelBackground,
-                                    color: colors.text,
-                                    borderColor: colors.border
-                                }}
-                            >
-                                {editedIncomer["Current Rating"] || "—"}
-                            </div>
-                        )}
+                        <DropdownField
+                            label={`Select I/C (Max load: ${maxIncomingLoad})`}
+                            value={editedIncomer["Current Rating"]}
+                            options={dbIncomerOptions}
+                            onChange={(val: string) => handleIncomerChange("Current Rating", val)}
+                            editMode={editMode}
+                            colors={colors}
+                        />
                     </div>
                 </div>
 
@@ -1609,34 +1727,13 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                                         >
                                             {label} (Max: {maxLoad})
                                         </label>
-                                        {editMode ? (
-                                            <select
-                                                value={editedOutgoing[globalIndex]?.["Current Rating"] || ""}
-                                                onChange={(e) => handleOutgoingChange(globalIndex, "Current Rating", e.target.value)}
-                                                className="w-full px-1 py-1 text-xs border rounded appearance-none focus:outline-none focus:ring-1 focus:ring-blue-500"
-                                                style={{
-                                                    backgroundColor: colors.panelBackground,
-                                                    color: colors.text,
-                                                    borderColor: colors.border
-                                                }}
-                                            >
-                                                <option value="">Select...</option>
-                                                {dbOutgoingOptions.map(opt => (
-                                                    <option key={opt} value={opt}>{opt}</option>
-                                                ))}
-                                            </select>
-                                        ) : (
-                                            <div
-                                                className="text-xs font-medium px-2 py-1 rounded border"
-                                                style={{
-                                                    backgroundColor: colors.panelBackground,
-                                                    color: colors.text,
-                                                    borderColor: colors.border
-                                                }}
-                                            >
-                                                {editedOutgoing[globalIndex]?.["Current Rating"] || "—"}
-                                            </div>
-                                        )}
+                                        <DropdownField
+                                            value={editedOutgoing[globalIndex]?.["Current Rating"]}
+                                            options={dbOutgoingOptions}
+                                            onChange={(val: string) => handleOutgoingChange(globalIndex, "Current Rating", val)}
+                                            editMode={editMode}
+                                            colors={colors}
+                                        />
                                     </div>
                                 );
                             })}
@@ -1707,6 +1804,45 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                         {selectedItem.name.includes("HTPN") ? renderHTPNProperties() : renderDBProperties()}
 
                         {/* Add other item specific renders here if needed */}
+                        {selectedItem.name === "Busbar Chamber" && (
+                            <div className="mt-4 pt-4 border-t border-gray-200">
+                                <h4 className="text-xs font-bold mb-2" style={{ color: colors.text }}>Configuration</h4>
+                                {renderNumberInput("Length (m)", "Length", 0, 2.5, editedProperties, handlePropertyChange, 1, 0.1)}
+
+                                {editedProperties["Bars"] !== "2" && (
+                                    <div className="mt-4">
+                                        <h4 className="text-xs font-bold mb-2" style={{ color: colors.text }}>Outgoing Phases</h4>
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {Array.from({ length: Math.max(1, Math.floor((parseFloat(editedProperties["Length"] || "1") || 1) * 6)) }).map((_, idx) => (
+                                                <div key={idx} className="flex flex-col">
+                                                    <label className="text-[10px] mb-1" style={{ color: colors.text }}>O{idx + 1}</label>
+                                                    {editMode ? (
+                                                        <select
+                                                            value={editedOutgoing[idx]?.["Phase"] || (["R", "Y", "B"][idx % 3])}
+                                                            onChange={(e) => handleOutgoingChange(idx, "Phase", e.target.value)}
+                                                            className="px-2 py-1 text-[10px] rounded border focus:outline-none bg-white/50 dark:bg-black/20 border-white/20 dark:border-white/10"
+                                                            style={{ color: colors.text }}
+                                                        >
+                                                            <option value="R">R</option>
+                                                            <option value="Y">Y</option>
+                                                            <option value="B">B</option>
+                                                            <option value="ALL">ALL</option>
+                                                        </select>
+                                                    ) : (
+                                                        <div
+                                                            className="px-2 py-1 text-[10px] rounded border border-transparent"
+                                                            style={{ color: colors.text }}
+                                                        >
+                                                            {editedOutgoing[idx]?.["Phase"] || (["R", "Y", "B"][idx % 3])}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
                     </>
                 )}
 

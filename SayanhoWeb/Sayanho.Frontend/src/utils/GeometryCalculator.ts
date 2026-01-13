@@ -207,6 +207,29 @@ export const calculateGeometry = (item: CanvasItem): { size: Size, connectionPoi
 
             newConnectionPoints[key] = { x: x, y: yValue };
         }
+    } else if (item.name === "Busbar Chamber") {
+        const lengthStr = properties["Length"] || "1";
+        const length = parseFloat(lengthStr);
+        const validLength = isNaN(length) ? 1 : length;
+
+        // "1 out connection points per 1/6 mtr length"
+        const count = Math.max(1, Math.floor(validLength * 6));
+
+        const spacing = 60;
+        const margin = 30;
+
+        width = margin * 2 + (count - 1) * spacing;
+        height = 150; // Fixed Height
+
+        // In Point (Top Center)
+        newConnectionPoints["in"] = { x: width / 2, y: 0 };
+
+        // Out Points (Bottom Distributed)
+        for (let i = 0; i < count; i++) {
+            const x = margin + i * spacing;
+
+            newConnectionPoints[`out${i + 1}`] = { x: x, y: height };
+        }
     } else {
         return null;
     }

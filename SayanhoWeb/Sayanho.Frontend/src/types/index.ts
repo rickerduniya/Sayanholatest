@@ -62,6 +62,8 @@ export interface CanvasSheetState {
     existingLinePoints: Point[][];
     existingConnections: string[];
     scale: number;
+    stagingItems?: CanvasItem[];
+    placedStagingIds?: string[];
 }
 
 export interface CanvasSheet {

@@ -319,6 +319,55 @@ export class NetworkAnalyzer {
                         else if (spnPhase === "Y") yPhaseCurrent += this.parseCurrent(outConnector.currentValues?.["Y_Current"]);
                         else if (spnPhase === "B") bPhaseCurrent += this.parseCurrent(outConnector.currentValues?.["B_Current"]);
                     });
+                } else if (targetItem.name === "Busbar Chamber") {
+                    const busbarProps = (targetItem.properties?.[0] || {}) as Record<string, string>;
+                    const bars = (busbarProps["Bars"] || "4").toString();
+                    const outgoings = targetItem.outgoing || [];
+
+                    outgoingConnectors.forEach(outConnector => {
+                        const sourcePointKey = outConnector.sourcePointKey || "";
+                        let outgoingIndex = -1;
+                        if (sourcePointKey.startsWith("out")) {
+                            const indexPart = sourcePointKey.substring(3).split('_')[0];
+                            outgoingIndex = parseInt(indexPart, 10) - 1;
+                        }
+
+                        let linkVoltage = 415;
+                        let linkPhase = "ALL";
+
+                        if (bars === "2") {
+                            // 2-bar busbar: single-phase system. All outgoing taps inherit incomer phase.
+                            linkVoltage = 230;
+                            linkPhase = phase;
+                            if (linkPhase !== "R" && linkPhase !== "Y" && linkPhase !== "B") {
+                                linkPhase = "R";
+                            }
+                        } else {
+                            // 4-bar busbar: per-outgoing phase configuration (R/Y/B or ALL)
+                            let configuredPhase: string | undefined;
+                            if (outgoingIndex >= 0 && outgoingIndex < outgoings.length) {
+                                configuredPhase = outgoings[outgoingIndex]?.["Phase"];
+                            }
+
+                            const defaultPhases = ["R", "Y", "B"];
+                            const normalized = (configuredPhase || defaultPhases[Math.max(outgoingIndex, 0) % 3]).toString();
+
+                            if (normalized === "ALL") {
+                                linkVoltage = 415;
+                                linkPhase = "ALL";
+                            } else {
+                                linkVoltage = 230;
+                                linkPhase = (normalized === "Y" || normalized === "B") ? normalized : "R";
+                            }
+                        }
+
+                        this.traceAndCalculateCurrent(outConnector, linkVoltage, phaseType, linkPhase, visited, visitedNets);
+                        totalCurrent += this.parseCurrent(outConnector.currentValues?.["Current"]);
+
+                        if (linkPhase === "R" || linkPhase === "ALL") rPhaseCurrent += this.parseCurrent(outConnector.currentValues?.["R_Current"]);
+                        if (linkPhase === "Y" || linkPhase === "ALL") yPhaseCurrent += this.parseCurrent(outConnector.currentValues?.["Y_Current"]);
+                        if (linkPhase === "B" || linkPhase === "ALL") bPhaseCurrent += this.parseCurrent(outConnector.currentValues?.["B_Current"]);
+                    });
                 } else if (targetItem.name?.includes("HTPN")) {
                     outgoingConnectors.forEach(outConnector => {
                         const outPointKey = outConnector.sourcePointKey || "";

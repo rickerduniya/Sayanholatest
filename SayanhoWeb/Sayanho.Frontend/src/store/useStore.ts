@@ -2,6 +2,9 @@ import { create } from 'zustand';
 import { CanvasSheet, CanvasItem, Connector, CanvasSheetState } from '../types';
 import { NetworkAnalyzer } from '../utils/NetworkAnalyzer';
 import { getItemDefinition } from '../utils/DefaultRulesEngine';
+import { LOAD_ITEM_DEFAULTS } from '../utils/DefaultRulesEngine';
+import { ConnectorUtils } from '../utils/ConnectorUtils';
+import { useLayoutStore } from './useLayoutStore';
 
 interface StoreState {
     sheets: CanvasSheet[];
@@ -12,6 +15,14 @@ interface StoreState {
     editMode: boolean;
     isPropertiesPanelOpen: boolean;
     isChatOpen: boolean;
+
+    // Staging Items (for Layout -> SLD sync)
+    stagingItems: CanvasItem[];
+    placedStagingIds: Set<string>;  // Track placed staging items to prevent duplicate placement
+    setStagingItems: (items: CanvasItem[]) => void;
+    removeStagingItem: (id: string) => void;
+    markStagingItemPlaced: (id: string) => void;  // Mark a staging item as placed
+    isStagingItemPlaced: (id: string) => boolean;  // Check if staging item was already placed
 
     // Sheet Actions
     setSheets: (sheets: CanvasSheet[]) => void;
@@ -109,6 +120,11 @@ interface StoreState {
 }
 
 const MAX_HISTORY = 20;
+
+const deepClone = <T,>(v: T): T => {
+    if (typeof structuredClone === 'function') return structuredClone(v);
+    return JSON.parse(JSON.stringify(v));
+};
 const NETWORK_DEBOUNCE_MS = 150;
 
 export const useStore = create<StoreState>((set, get) => ({
@@ -131,6 +147,23 @@ export const useStore = create<StoreState>((set, get) => ({
     editMode: false,
     isPropertiesPanelOpen: false,
     isChatOpen: false,
+
+    // Staging Items
+    stagingItems: [],
+    placedStagingIds: new Set<string>(),
+    setStagingItems: (items) => set((state) => {
+        const placedIds = new Set(state.sheets.flatMap(s => s.canvasItems).map(i => i.uniqueID));
+        return { stagingItems: items.filter(i => !placedIds.has(i.uniqueID)) };
+    }),
+    removeStagingItem: (id) => set((state) => ({
+        stagingItems: state.stagingItems.filter(i => i.uniqueID !== id)
+    })),
+    markStagingItemPlaced: (id) => set((state) => {
+        const newSet = new Set(state.placedStagingIds);
+        newSet.add(id);
+        return { placedStagingIds: newSet };
+    }),
+    isStagingItemPlaced: (id) => get().placedStagingIds.has(id) || get().sheets.some(s => s.canvasItems.some(i => i.uniqueID === id)),
 
     settings: {
         maxVoltageDropPercentage: 7.0,
@@ -258,13 +291,15 @@ export const useStore = create<StoreState>((set, get) => ({
         const activeSheet = state.sheets.find(s => s.sheetId === state.activeSheetId);
         if (!activeSheet) return {};
 
-        const snapshot: CanvasSheetState = {
+        const snapshot: CanvasSheetState = deepClone({
             canvasItems: activeSheet.canvasItems,
             storedConnectors: activeSheet.storedConnectors,
             existingLinePoints: activeSheet.existingLinePoints,
             existingConnections: activeSheet.existingConnections,
-            scale: activeSheet.scale
-        };
+            scale: activeSheet.scale,
+            stagingItems: state.stagingItems,
+            placedStagingIds: Array.from(state.placedStagingIds)
+        });
 
         const newUndoStack = [...activeSheet.undoStack, snapshot].slice(-MAX_HISTORY);
 
@@ -281,27 +316,40 @@ export const useStore = create<StoreState>((set, get) => ({
         const activeSheet = state.sheets.find(s => s.sheetId === state.activeSheetId);
         if (!activeSheet || activeSheet.undoStack.length === 0) return {};
 
-        const currentSnapshot: CanvasSheetState = {
+        const currentSnapshot: CanvasSheetState = deepClone({
             canvasItems: activeSheet.canvasItems,
             storedConnectors: activeSheet.storedConnectors,
             existingLinePoints: activeSheet.existingLinePoints,
             existingConnections: activeSheet.existingConnections,
-            scale: activeSheet.scale
-        };
+            scale: activeSheet.scale,
+            stagingItems: state.stagingItems,
+            placedStagingIds: Array.from(state.placedStagingIds)
+        });
 
         const previousSnapshot = activeSheet.undoStack[activeSheet.undoStack.length - 1];
+        const { stagingItems: prevStagingItems, placedStagingIds: prevPlaced, ...previousSheetSnapshot } = previousSnapshot as CanvasSheetState;
         const newUndoStack = activeSheet.undoStack.slice(0, -1);
         const newRedoStack = [...activeSheet.redoStack, currentSnapshot];
+
+        // Preserve current view state (viewport/zoom) across undo
+        const keepScale = activeSheet.scale;
+        const keepViewportX = activeSheet.viewportX;
+        const keepViewportY = activeSheet.viewportY;
 
         return {
             sheets: state.sheets.map(s => s.sheetId === state.activeSheetId ? {
                 ...s,
-                ...previousSnapshot,
+                ...previousSheetSnapshot,
+                scale: keepScale,
+                viewportX: keepViewportX,
+                viewportY: keepViewportY,
                 undoStack: newUndoStack,
                 redoStack: newRedoStack
             } : s),
             selectedItemIds: [],
-            selectedConnectorIndices: []
+            selectedConnectorIndices: [],
+            stagingItems: prevStagingItems ?? state.stagingItems,
+            placedStagingIds: new Set(prevPlaced ?? Array.from(state.placedStagingIds))
         };
     }),
 
@@ -309,27 +357,40 @@ export const useStore = create<StoreState>((set, get) => ({
         const activeSheet = state.sheets.find(s => s.sheetId === state.activeSheetId);
         if (!activeSheet || activeSheet.redoStack.length === 0) return {};
 
-        const currentSnapshot: CanvasSheetState = {
+        const currentSnapshot: CanvasSheetState = deepClone({
             canvasItems: activeSheet.canvasItems,
             storedConnectors: activeSheet.storedConnectors,
             existingLinePoints: activeSheet.existingLinePoints,
             existingConnections: activeSheet.existingConnections,
-            scale: activeSheet.scale
-        };
+            scale: activeSheet.scale,
+            stagingItems: state.stagingItems,
+            placedStagingIds: Array.from(state.placedStagingIds)
+        });
 
         const nextSnapshot = activeSheet.redoStack[activeSheet.redoStack.length - 1];
+        const { stagingItems: nextStagingItems, placedStagingIds: nextPlaced, ...nextSheetSnapshot } = nextSnapshot as CanvasSheetState;
         const newRedoStack = activeSheet.redoStack.slice(0, -1);
         const newUndoStack = [...activeSheet.undoStack, currentSnapshot];
+
+        // Preserve current view state (viewport/zoom) across redo
+        const keepScale = activeSheet.scale;
+        const keepViewportX = activeSheet.viewportX;
+        const keepViewportY = activeSheet.viewportY;
 
         return {
             sheets: state.sheets.map(s => s.sheetId === state.activeSheetId ? {
                 ...s,
-                ...nextSnapshot,
+                ...nextSheetSnapshot,
+                scale: keepScale,
+                viewportX: keepViewportX,
+                viewportY: keepViewportY,
                 undoStack: newUndoStack,
                 redoStack: newRedoStack
             } : s),
             selectedItemIds: [],
-            selectedConnectorIndices: []
+            selectedConnectorIndices: [],
+            stagingItems: nextStagingItems ?? state.stagingItems,
+            placedStagingIds: new Set(nextPlaced ?? Array.from(state.placedStagingIds))
         };
     }),
 
@@ -438,6 +499,17 @@ export const useStore = create<StoreState>((set, get) => ({
 
     deleteItem: (id) => {
         get().takeSnapshot();
+
+        // PHASE 2.2: Get the item to find its linked Layout component before deletion
+        let linkedLayoutId: string | undefined;
+        for (const s of get().sheets) {
+            const item = s.canvasItems.find(i => i.uniqueID === id);
+            if (item) {
+                linkedLayoutId = item.properties?.[0]?.['_layoutComponentId'];
+                break;
+            }
+        }
+
         set((state) => {
             // Build a deletion set, cascading if an 'out' portal is deleted
             const deletionIds = new Set<string>([id]);
@@ -466,14 +538,35 @@ export const useStore = create<StoreState>((set, get) => ({
                 return { ...s, canvasItems: filteredItems, storedConnectors: filteredConnectors };
             });
 
+            // Clear placed staging flags for deleted items so they can be re-placed after re-sync
+            const newPlaced = new Set(state.placedStagingIds);
+            deletionIds.forEach(did => newPlaced.delete(did));
+
             const remainingSelection = state.selectedItemIds.filter(sid => !deletionIds.has(sid));
             return {
                 sheets: newSheets,
                 selectedItemIds: remainingSelection,
-                isPropertiesPanelOpen: remainingSelection.length > 0 && state.isPropertiesPanelOpen
+                isPropertiesPanelOpen: remainingSelection.length > 0 && state.isPropertiesPanelOpen,
+                // Also remove from staging
+                stagingItems: state.stagingItems.filter(item => !deletionIds.has(item.uniqueID)),
+                placedStagingIds: newPlaced
             };
         });
         get().calculateNetwork();
+
+        // PHASE 2.2: Propagate deletion to Layout store
+        if (linkedLayoutId) {
+            // Import dynamically to avoid circular dependency
+            import('./useLayoutStore').then(({ useLayoutStore }) => {
+                // Check across all floor plans (component might not be on the active plan)
+                const st = useLayoutStore.getState();
+                const exists = st.floorPlans.some(p => p.components.some(c => c.id === linkedLayoutId));
+                if (!exists) return;
+
+                st.removeComponent(linkedLayoutId);
+                console.log('[SLD→Layout] Deleted linked Layout component:', linkedLayoutId);
+            });
+        }
     },
 
     deleteSelected: () => {
@@ -505,6 +598,8 @@ export const useStore = create<StoreState>((set, get) => ({
 
         if (selectedItemIds.length === 0) return;
 
+        const layoutIdsToDelete = new Set<string>();
+
         get().takeSnapshot();
         set((state) => {
             // Expand selection with counterparts for any OUT portals
@@ -532,13 +627,37 @@ export const useStore = create<StoreState>((set, get) => ({
                 return { ...s, canvasItems: filteredItems, storedConnectors: filteredConnectors };
             });
 
+            // Collect linked Layout IDs for propagation
+            for (const sh of state.sheets) {
+                for (const item of sh.canvasItems) {
+                    if (!idsToDelete.has(item.uniqueID)) continue;
+                    const lid = item.properties?.[0]?.['_layoutComponentId'];
+                    if (lid) layoutIdsToDelete.add(lid);
+                }
+            }
+
+            const newPlaced = new Set(state.placedStagingIds);
+            idsToDelete.forEach(did => newPlaced.delete(did));
+
             return {
                 sheets: newSheets,
                 selectedItemIds: [],
-                isPropertiesPanelOpen: false
+                isPropertiesPanelOpen: false,
+                placedStagingIds: newPlaced
             };
         });
         get().calculateNetwork();
+
+        if (layoutIdsToDelete.size > 0) {
+            import('./useLayoutStore').then(({ useLayoutStore }) => {
+                const st = useLayoutStore.getState();
+                for (const lid of layoutIdsToDelete) {
+                    const exists = st.floorPlans.some(p => p.components.some(c => c.id === lid));
+                    if (!exists) continue;
+                    st.removeComponent(lid);
+                }
+            });
+        }
     },
 
     duplicateItem: (id) => {
@@ -550,10 +669,23 @@ export const useStore = create<StoreState>((set, get) => ({
             const item = activeSheet.canvasItems.find(i => i.uniqueID === id);
             if (!item) return {};
 
+            // PHASE 1.2: Deep copy properties and regenerate _layoutComponentId
+            // This prevents two SLD items from pointing to the same Layout component (mapping ambiguity)
+            const newProperties = item.properties ? item.properties.map(prop => {
+                const copied = { ...prop };
+                // Regenerate canonical Layout ID for the duplicate
+                if (copied['_layoutComponentId']) {
+                    copied['_layoutComponentId'] = `comp_${crypto.randomUUID()}`;
+                    console.log('[useStore] Regenerated _layoutComponentId for duplicate:', copied['_layoutComponentId']);
+                }
+                return copied;
+            }) : [];
+
             const newItem = {
                 ...item,
                 uniqueID: crypto.randomUUID(),
-                position: { x: item.position.x + 20, y: item.position.y + 20 }
+                position: { x: item.position.x + 20, y: item.position.y + 20 },
+                properties: newProperties
             };
 
             return {

@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, forwardRef, useImperativeHandle } f
 import { createPortal as reactCreatePortal } from 'react-dom';
 import { Stage, Layer, Line, Group, Text, Rect } from 'react-konva';
 import { useStore } from '../store/useStore';
+import { useLayoutStore } from '../store/useLayoutStore';
 import { CanvasItem, Connector, Point } from '../types';
 import { ItemComponent } from './ItemComponent';
 import { CreatePortalDialog } from './CreatePortalDialog';
@@ -137,7 +138,9 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
         // Portal helpers
         isNetLabelUnique, createPortal, createPairedPortal, getPortalsByNetId, countConnectorsForItem,
         // Navigation
-        setActiveSheet
+        setActiveSheet,
+        // Staging items
+        removeStagingItem, markStagingItemPlaced, isStagingItemPlaced
     } = useStore();
     const currentSheet = sheets.find(s => s.sheetId === activeSheetId);
     const { colors, theme } = useTheme();
@@ -265,6 +268,19 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
         currentSheet.storedConnectors.forEach(connector => {
             const sourceItem = currentSheet.canvasItems.find(ci => ci.uniqueID === connector.sourceItem.uniqueID) || connector.sourceItem;
             const targetItem = currentSheet.canvasItems.find(ci => ci.uniqueID === connector.targetItem.uniqueID) || connector.targetItem;
+
+            const sourcePointValid = sourceItem.connectionPoints && sourceItem.connectionPoints[connector.sourcePointKey];
+            const targetPointValid = targetItem.connectionPoints && targetItem.connectionPoints[connector.targetPointKey];
+
+            if (!sourcePointValid || !targetPointValid) {
+                console.warn('[Canvas][Bounds] Skipping connector with missing connection point', {
+                    sourceValid: !!sourcePointValid,
+                    targetValid: !!targetPointValid,
+                    sourceKey: connector.sourcePointKey,
+                    targetKey: connector.targetPointKey
+                });
+                return;
+            }
 
             // Calculate path at scale 1 (world coordinates)
             const result = ConnectorUtils.calculateConnectorPath(
@@ -540,6 +556,34 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
         return () => clearTimeout(timer);
     }, [scale, position, updateSheet, currentSheet]); // Dependent on values to trigger debounce
 
+    // Auto-focus on mount if selection exists (Teleport support)
+    useEffect(() => {
+        // Only run if exactly one item is selected (teleport scenario)
+        if (selectedItemIds.length === 1 && currentSheet) {
+            const itemId = selectedItemIds[0];
+            const item = currentSheet.canvasItems.find(i => i.uniqueID === itemId);
+
+            if (item) {
+                setTimeout(() => {
+                    // Use ref directly to get latest dimensions if observing hasn't fired yet
+                    const stageW = containerRef.current?.offsetWidth || window.innerWidth;
+                    const stageH = containerRef.current?.offsetHeight || window.innerHeight;
+
+                    const itemCenterX = item.position.x + item.size.width / 2;
+                    const itemCenterY = item.position.y + item.size.height / 2;
+
+                    const targetScale = 1.0;
+
+                    setScale(targetScale);
+                    setPosition({
+                        x: stageW / 2 - itemCenterX * targetScale,
+                        y: stageH / 2 - itemCenterY * targetScale
+                    });
+                }, 100);
+            }
+        }
+    }, []); // Run ONCE on mount
+
     useEffect(() => {
         if (props.onScaleChange) {
             props.onScaleChange(scale);
@@ -564,38 +608,67 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
             dropAt: { x: adjustedX, y: adjustedY }
         });
 
+        // Check if this is a staging item (from Unplaced Items tab)
+        const isStagingItem = itemData._isStagingItem === true;
+        const stagingItemId = itemData.uniqueID;
+
+        // Prevent duplicate placement of staging items
+        if (isStagingItem && stagingItemId && isStagingItemPlaced(stagingItemId)) {
+            console.warn('[Canvas] Staging item already placed:', stagingItemId);
+            return;
+        }
+
         const newItem: CanvasItem = {
-            uniqueID: crypto.randomUUID(),
+            uniqueID: isStagingItem ? stagingItemId : crypto.randomUUID(), // Keep original ID for staging items to maintain sync
             name: itemData.name,
             position: { x: adjustedX, y: adjustedY },
             size: itemData.size,
             connectionPoints: itemData.connectionPoints,
-            properties: [],
-            alternativeCompany1: '',
-            alternativeCompany2: '',
-            svgContent: undefined,
+            properties: isStagingItem ? (itemData.properties || []) : [], // Preserve properties for staging items
+            alternativeCompany1: itemData.alternativeCompany1 || '',
+            alternativeCompany2: itemData.alternativeCompany2 || '',
+            svgContent: itemData.svgContent || undefined,
             iconPath: itemData.iconPath,
             locked: false,
-            idPoints: {},
-            incomer: {},
-            outgoing: [],
-            accessories: []
+            idPoints: itemData.idPoints || {},
+            incomer: itemData.incomer || {},
+            outgoing: itemData.outgoing || [],
+            accessories: itemData.accessories || []
         };
 
         try {
-            const props = await api.getItemProperties(itemData.name, 1);
-            if (props?.properties && props.properties.length > 0) {
-                newItem.properties = [props.properties[0]];
-            } else if (LOAD_ITEM_DEFAULTS[newItem.name]) {
-                // Fallback to local defaults if API returns nothing
-                newItem.properties = [{ ...LOAD_ITEM_DEFAULTS[newItem.name] }];
+            // For staging items, preserve the existing properties (including _layoutComponentId)
+            // and only add missing default properties
+            if (isStagingItem && newItem.properties.length > 0) {
+                // Staging item already has properties - don't overwrite them
+                // Just ensure we have the basics if anything is missing
+                const existingProps = newItem.properties[0] || {};
+                const props = await api.getItemProperties(itemData.name, 1);
+                if (props?.properties && props.properties.length > 0) {
+                    // Merge: keep existing props (like _layoutComponentId), add any missing from API
+                    newItem.properties = [{
+                        ...props.properties[0],  // API defaults as base
+                        ...existingProps         // Existing props override (preserves _layoutComponentId)
+                    }];
+                }
+                newItem.alternativeCompany1 = props?.alternativeCompany1 || newItem.alternativeCompany1;
+                newItem.alternativeCompany2 = props?.alternativeCompany2 || newItem.alternativeCompany2;
+            } else {
+                // Normal item - load properties from API as usual
+                const props = await api.getItemProperties(itemData.name, 1);
+                if (props?.properties && props.properties.length > 0) {
+                    newItem.properties = [props.properties[0]];
+                } else if (LOAD_ITEM_DEFAULTS[newItem.name]) {
+                    // Fallback to local defaults if API returns nothing
+                    newItem.properties = [{ ...LOAD_ITEM_DEFAULTS[newItem.name] }];
+                }
+                newItem.alternativeCompany1 = props?.alternativeCompany1 || '';
+                newItem.alternativeCompany2 = props?.alternativeCompany2 || '';
             }
-            newItem.alternativeCompany1 = props?.alternativeCompany1 || '';
-            newItem.alternativeCompany2 = props?.alternativeCompany2 || '';
         } catch (err) {
             log('[UI][DROP] default properties load failed', { name: itemData.name, error: String(err) });
-            // Fallback on error too
-            if (LOAD_ITEM_DEFAULTS[newItem.name]) {
+            // Fallback on error too - but still preserve staging item props
+            if (!isStagingItem && LOAD_ITEM_DEFAULTS[newItem.name]) {
                 newItem.properties = [{ ...LOAD_ITEM_DEFAULTS[newItem.name] }];
             }
         }
@@ -626,13 +699,13 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
 
         // Apply local definitions for static items
         const staticDef = getItemDefinition(newItem.name);
-        if (staticDef && !["HTPN", "VTPN", "SPN DB"].includes(newItem.name)) {
+        if (staticDef && !["HTPN", "VTPN", "SPN DB", "Busbar Chamber"].includes(newItem.name)) {
             newItem.size = staticDef.size;
             newItem.connectionPoints = staticDef.connectionPoints;
         }
 
         // Initialize Distribution Boards and Switches
-        if (["HTPN", "VTPN", "SPN DB", "Main Switch", "Change Over Switch", "Point Switch Board", "Avg. 5A Switch Board"].includes(newItem.name)) {
+        if (["HTPN", "VTPN", "SPN DB", "Main Switch", "Change Over Switch", "Point Switch Board", "Avg. 5A Switch Board", "Busbar Chamber"].includes(newItem.name)) {
             if (!newItem.properties[0]) newItem.properties[0] = {};
             let wayVal = newItem.properties[0]["Way"];
             if (!wayVal || wayVal.includes(',')) {
@@ -653,7 +726,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
             }
 
             // Ensure DB outgoing defaults are applied immediately on creation
-            if (["HTPN", "VTPN", "SPN DB"].includes(newItem.name)) {
+            if (["HTPN", "VTPN", "SPN DB", "Busbar Chamber"].includes(newItem.name)) {
                 const threshold = DefaultRulesEngine.getDefaultOutgoingThreshold(newItem.name);
                 if (threshold > 0 && newItem.outgoing && newItem.outgoing.length > 0) {
                     const parseRating = (s: string) => {
@@ -711,7 +784,34 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
             }
         }
 
+        // PHASE 1.1: Ensure every SLD item has a canonical _layoutComponentId
+        // This is critical for identity stability - reverse sync uses this to map to Layout components
+        if (!newItem.properties[0]) {
+            newItem.properties = [{}];
+        }
+        if (!newItem.properties[0]['_layoutComponentId']) {
+            // Generate a stable canonical Layout component ID
+            newItem.properties[0]['_layoutComponentId'] = `comp_${crypto.randomUUID()}`;
+            console.log('[Canvas] Generated canonical _layoutComponentId:', newItem.properties[0]['_layoutComponentId']);
+        }
+
         addItem(newItem);
+
+        // If this was a staging item, remove it from staging and mark as placed
+        if (isStagingItem && stagingItemId) {
+            removeStagingItem(stagingItemId);
+            markStagingItemPlaced(stagingItemId);
+            console.log('[Canvas] Staging item placed and removed from staging:', stagingItemId);
+
+            const layoutId = (newItem.properties?.[0] as any)?.['_layoutComponentId'];
+            if (layoutId) {
+                try {
+                    useLayoutStore.getState().updateComponent(layoutId, { sldItemId: newItem.uniqueID });
+                } catch (e) {
+                    console.warn('[Canvas] Failed to backlink Layout component to placed SLD item', e);
+                }
+            }
+        }
     };
 
     const handleDragOver = (e: React.DragEvent) => {
@@ -1265,11 +1365,27 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
     const calculatedPaths = React.useMemo(() => {
         if (!currentSheet) return [];
         const existingPaths: Point[][] = [];
-        return currentSheet.storedConnectors.map((connector) => {
+        return currentSheet.storedConnectors.map((connector, i) => {
             const sourceItem = currentSheet.canvasItems.find(ci => ci.uniqueID === connector.sourceItem.uniqueID) || connector.sourceItem;
             const targetItem = currentSheet.canvasItems.find(ci => ci.uniqueID === connector.targetItem.uniqueID) || connector.targetItem;
 
             const updatedConnector = { ...connector, sourceItem, targetItem };
+
+            // CRITICAL SENTRY: Check if connection points exist on the items
+            // This prevents crashes when an item's configuration changes (re-rendering connection points)
+            // but the connector still references the old point key (e.g. Busbar 4-bar -> 2-bar)
+            const sourcePointValid = sourceItem.connectionPoints && sourceItem.connectionPoints[connector.sourcePointKey];
+            const targetPointValid = targetItem.connectionPoints && targetItem.connectionPoints[connector.targetPointKey];
+
+            if (!sourcePointValid || !targetPointValid) {
+                console.warn(`[Canvas] Missing connection point for connector ${i}`, {
+                    sourceValid: !!sourcePointValid,
+                    targetValid: !!targetPointValid,
+                    sourceKey: connector.sourcePointKey,
+                    targetKey: connector.targetPointKey
+                });
+                return { points: [], connector: updatedConnector };
+            }
 
             const result = ConnectorUtils.calculateConnectorPath(
                 updatedConnector,
@@ -1916,6 +2032,32 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                                 >
                                     {currentSheet?.canvasItems.find(i => i.uniqueID === menu.itemId)?.locked ? "Unlock Item" : "Lock Item"}
                                 </button>
+                                {/* Go to Layout - Teleport Feature */}
+                                {(() => {
+                                    const item = currentSheet?.canvasItems.find(i => i.uniqueID === menu.itemId);
+                                    const layoutComponentId = item?.properties?.[0]?.['_layoutComponentId'];
+                                    if (!layoutComponentId) return null;
+                                    return (
+                                        <>
+                                            <div className="border-t my-1" style={{ borderColor: colors.border }}></div>
+                                            <button
+                                                className={`block w-full text-left px-3 py-1 text-blue-500 ${theme === 'dark' ? 'hover:bg-slate-700' : 'hover:bg-gray-100'}`}
+                                                onClick={() => {
+                                                    // Switch to Layout view
+                                                    useLayoutStore.getState().setActiveView('layout');
+                                                    // Select the component in Layout
+                                                    const st = useLayoutStore.getState();
+                                                    const targetPlan = st.floorPlans.find(p => p.components.some(c => c.id === layoutComponentId));
+                                                    if (targetPlan && st.activeFloorPlanId !== targetPlan.id) {
+                                                        st.setActiveFloorPlan(targetPlan.id);
+                                                    }
+                                                    st.selectElement(layoutComponentId);
+                                                    setMenu({ ...menu, visible: false });
+                                                }}
+                                            >Go to Layout ↗</button>
+                                        </>
+                                    );
+                                })()}
                             </>
                         )}
 

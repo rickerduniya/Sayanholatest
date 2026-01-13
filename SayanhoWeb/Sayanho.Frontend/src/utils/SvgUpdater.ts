@@ -36,6 +36,9 @@ export const updateItemVisuals = (item: CanvasItem): string => {
         case "Source":
             modified = updateSourceVisuals(doc, item);
             break;
+        case "Busbar Chamber":
+            modified = updateBusbarChamberVisuals(doc, item);
+            break;
     }
 
     if (modified) {
@@ -363,4 +366,151 @@ const updateSourceVisuals = (doc: Document, item: CanvasItem): boolean => {
     }
 
     return modified;
+};
+
+const updateBusbarChamberVisuals = (doc: Document, item: CanvasItem): boolean => {
+    // We will generate a fresh SVG string based on geometry
+    const properties = item.properties[0] || {};
+    const lengthStr = properties["Length"] || "1";
+    const length = parseFloat(lengthStr);
+    const validLength = isNaN(length) ? 1 : length;
+    const count = Math.max(1, Math.floor(validLength * 6));
+    const spacing = 60;
+    const margin = 30;
+    const width = margin * 2 + (count - 1) * spacing;
+    const height = 150;
+
+    // Create new SVG structure
+    const ns = "http://www.w3.org/2000/svg";
+    const newDoc = document.implementation.createDocument(ns, "svg", null);
+    const svg = newDoc.documentElement;
+    svg.setAttribute("width", width.toString());
+    svg.setAttribute("height", height.toString());
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svg.setAttribute("xmlns", ns);
+
+    // Chamber Box
+    const rect = newDoc.createElementNS(ns, "rect");
+    rect.setAttribute("x", "5"); rect.setAttribute("y", "5");
+    rect.setAttribute("width", (width - 10).toString());
+    rect.setAttribute("height", (height - 10).toString());
+    rect.setAttribute("rx", "5");
+    rect.setAttribute("fill", "transparent");
+    rect.setAttribute("stroke", "#333");
+    rect.setAttribute("stroke-width", "2");
+    svg.appendChild(rect);
+
+    const bars = properties["Bars"] || "4"; // Default 4
+    const isSinglePhase = bars === "2";
+
+    // Busbars (R, Y, B, N) or (P, N)
+    const phases = isSinglePhase
+        ? ["black", "blue"] // P, N
+        : ["red", "yellow", "blue", "black"]; // R, Y, B, N
+
+    // For single phase we might want fewer bars visually?
+    // Let's stick to 4 lines for 3-phase, 2 lines for 1-phase
+    const barSpacing = isSinglePhase ? 40 : 20;
+
+    const startY = 40;
+
+    phases.forEach((color, idx) => {
+        const line = newDoc.createElementNS(ns, "line");
+        line.setAttribute("x1", "15");
+        line.setAttribute("y1", (startY + idx * barSpacing).toString());
+        line.setAttribute("x2", (width - 15).toString());
+        line.setAttribute("y2", (startY + idx * barSpacing).toString());
+        line.setAttribute("stroke", color);
+        line.setAttribute("stroke-width", "4");
+        svg.appendChild(line);
+    });
+
+    // Label
+    const text = newDoc.createElementNS(ns, "text");
+    text.textContent = `Busbar Chamber (${validLength}m) - ${bars} Bars`;
+    text.setAttribute("x", (width / 2).toString());
+    text.setAttribute("y", "25");
+    text.setAttribute("text-anchor", "middle");
+    text.setAttribute("font-size", "12");
+    text.setAttribute("font-family", "Arial");
+    text.setAttribute("font-weight", "bold");
+    svg.appendChild(text);
+
+    // Connection Points Indicators
+    // In (Top)
+    const inCircle = newDoc.createElementNS(ns, "circle");
+    inCircle.setAttribute("cx", (width / 2).toString());
+    inCircle.setAttribute("cy", "5");
+    inCircle.setAttribute("r", "4");
+    inCircle.setAttribute("fill", "blue");
+    svg.appendChild(inCircle);
+
+    // Out (Bottom)
+    const outgoing = item.outgoing || [];
+    const defaultPhases = ["R", "Y", "B"];
+
+    for (let i = 0; i < count; i++) {
+        const x = margin + i * spacing;
+        let pColor = "green"; // Default
+
+        if (!isSinglePhase) {
+            const phase = outgoing[i]?.["Phase"] || defaultPhases[i % 3];
+            if (phase === "R") pColor = "red";
+            else if (phase === "Y") pColor = "gold"; // Match standard yellow
+            else if (phase === "B") pColor = "blue";
+            else if (phase === "ALL") pColor = "purple"; // Multi phase
+        } else {
+            pColor = "black"; // Single phase
+        }
+
+        const outCircle = newDoc.createElementNS(ns, "circle");
+        outCircle.setAttribute("cx", x.toString());
+        outCircle.setAttribute("cy", (height - 5).toString());
+        outCircle.setAttribute("r", "4");
+        outCircle.setAttribute("fill", pColor);
+        svg.appendChild(outCircle);
+
+        const outLabel = newDoc.createElementNS(ns, "text");
+        outLabel.textContent = `O${i + 1}`;
+        outLabel.setAttribute("x", x.toString());
+        outLabel.setAttribute("y", (height - 15).toString());
+        outLabel.setAttribute("text-anchor", "middle");
+        outLabel.setAttribute("font-size", "10");
+        svg.appendChild(outLabel);
+
+        // Add Phase Label for 4-bar
+        if (!isSinglePhase) {
+            const phase = outgoing[i]?.["Phase"] || defaultPhases[i % 3];
+            const pLabel = newDoc.createElementNS(ns, "text");
+            pLabel.textContent = phase;
+            pLabel.setAttribute("x", x.toString());
+            pLabel.setAttribute("y", (height - 25).toString()); // Above O1 label
+            pLabel.setAttribute("text-anchor", "middle");
+            pLabel.setAttribute("font-size", "9");
+            pLabel.setAttribute("font-weight", "bold");
+            pLabel.setAttribute("fill", pColor);
+            svg.appendChild(pLabel);
+        }
+    }
+
+    // Serialize
+    const newSvgString = new XMLSerializer().serializeToString(newDoc);
+
+    // Replace old content logic
+    // SvgUpdater expects 'doc' to be modified.
+
+    const oldRoot = doc.documentElement;
+    const parser = new DOMParser();
+    const finalDoc = parser.parseFromString(newSvgString, "image/svg+xml");
+    const finalRoot = finalDoc.documentElement;
+
+    while (oldRoot.firstChild) oldRoot.removeChild(oldRoot.firstChild);
+    // Copy attributes
+    for (let i = 0; i < finalRoot.attributes.length; i++) {
+        oldRoot.setAttribute(finalRoot.attributes[i].name, finalRoot.attributes[i].value);
+    }
+    // Copy children
+    while (finalRoot.firstChild) oldRoot.appendChild(finalRoot.firstChild);
+
+    return true;
 };
