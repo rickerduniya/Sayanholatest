@@ -37,7 +37,6 @@ interface LayoutToolbarProps {
     onZoomOut: () => void;
     onFitView: () => void;
     onUploadPlan: () => void;
-    onOpen3DView: () => void;
     onScaleCalibrate?: () => void;
     showMagicWires: boolean;
     onToggleMagicWires: () => void;
@@ -116,7 +115,6 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
     onZoomOut,
     onFitView,
     onUploadPlan,
-    onOpen3DView,
     onScaleCalibrate,
     showMagicWires,
     onToggleMagicWires
@@ -271,11 +269,6 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                         icon={<Upload size={16} />}
                         label="Upload Plan"
                         onClick={onUploadPlan}
-                    />
-                    <ToolButton
-                        icon={<Box size={16} />}
-                        label="3D View"
-                        onClick={onOpen3DView}
                     />
                     <ToolButton
                         icon={copied ? <Check size={16} /> : <Bug size={16} />}

@@ -1,14 +1,12 @@
 // Layout Designer - Main layout design view wrapper with sync functionality
 // Combines LayoutCanvas, LayoutSidebar, LayoutToolbar into a complete view
 
-import React, { useRef, useState, Suspense, lazy, useCallback, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { LayoutCanvas, LayoutCanvasRef } from './LayoutCanvas';
 import { LayoutSidebar } from './LayoutSidebar';
 import { LayoutToolbar } from './LayoutToolbar.tsx';
 import { UploadPlanDialog } from './UploadPlanDialog';
 import { ScaleCalibrationDialog } from './ScaleCalibrationDialog';
-// Lazy load ThreeDViewDialog to avoid loading @react-three/fiber at module init time
-const ThreeDViewDialog = lazy(() => import('./ThreeDViewDialog').then(mod => ({ default: mod.ThreeDViewDialog })));
 import { useLayoutStore } from '../store/useLayoutStore';
 import { useStore } from '../store/useStore';
 import { useTheme } from '../context/ThemeContext';
@@ -44,7 +42,6 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
 
     const [scale, setScale] = useState(0.5);
     const [showUploadDialog, setShowUploadDialog] = useState(false);
-    const [show3DView, setShow3DView] = useState(false);
     const [showScaleCalibration, setShowScaleCalibration] = useState(false);
     const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
     const [syncMessage, setSyncMessage] = useState('');
@@ -238,7 +235,6 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                     onZoomOut={() => canvasRef.current?.zoomOut()}
                     onFitView={() => canvasRef.current?.fitView()}
                     onUploadPlan={() => setShowUploadDialog(true)}
-                    onOpen3DView={() => setShow3DView(true)}
                     onScaleCalibrate={() => setShowScaleCalibration(true)}
                     showMagicWires={showMagicWires}
                     onToggleMagicWires={() => setShowMagicWires(!showMagicWires)}
@@ -363,14 +359,6 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                 onClose={() => setShowUploadDialog(false)}
             />
 
-            {show3DView && (
-                <Suspense fallback={<div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">Loading 3D View...</div>}>
-                    <ThreeDViewDialog
-                        isOpen={show3DView}
-                        onClose={() => setShow3DView(false)}
-                    />
-                </Suspense>
-            )}
 
             <ScaleCalibrationDialog
                 isOpen={showScaleCalibration}
