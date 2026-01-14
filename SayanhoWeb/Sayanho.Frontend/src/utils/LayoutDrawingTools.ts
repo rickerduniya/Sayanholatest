@@ -276,7 +276,7 @@ export const DRAWING_TOOL_CURSORS: Record<DrawingTool, string> = {
     component: 'copy',
     connection: 'crosshair',
     erase: 'not-allowed',
-    pick: 'help'
+    pick: 'crosshair'
 };
 
 export const DRAWING_TOOL_INSTRUCTIONS: Record<DrawingTool, string> = {
@@ -290,7 +290,7 @@ export const DRAWING_TOOL_INSTRUCTIONS: Record<DrawingTool, string> = {
     component: 'Click to place component',
     connection: 'Click source, then click target to connect',
     erase: 'Click elements to delete them',
-    pick: 'Click a wall to pick its thickness'
+    pick: 'Click to pick properties from element'
 };
 
 // ============================================================================

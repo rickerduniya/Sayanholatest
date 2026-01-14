@@ -415,7 +415,7 @@ export const FloorplanApiService = {
     /**
      * Detect layout from an image file using the external API
      */
-    detectLayout: async (file: File): Promise<DetectedLayout> => {
+    detectLayout: async (file: File, actualWidth?: number, actualHeight?: number): Promise<DetectedLayout> => {
         const formData = new FormData();
         formData.append('image', file);
         const confidence_threshold = '0.2';
@@ -458,7 +458,9 @@ export const FloorplanApiService = {
             }
 
             const imgResult = data.images[0];
-            return processDetectionResult(imgResult);
+
+            // Reconcile rotation if dimensions are swapped (EXIF issue)
+            return processDetectionResult(imgResult, actualWidth, actualHeight);
 
         } catch (error) {
             const msg = error instanceof Error ? error.message : String(error);
@@ -531,7 +533,36 @@ async function fetchWithRetry(url: string, options: RequestInit, retries = 3, ti
 /**
  * Process the API result into application entities
  */
-function processDetectionResult(result: ApiResponseImage): DetectedLayout {
+function processDetectionResult(result: ApiResponseImage, targetWidth?: number, targetHeight?: number): DetectedLayout {
+    let { points, classes, Width: apiWidth, Height: apiHeight } = result;
+
+    // Reconciliation Logic for EXIF Rotation
+    // If API sees 359x515 (Portrait) but FrontEnd shows 515x359 (Landscape),
+    // we need to rotate coordinates 90 degrees.
+    let rotation: '90cw' | '90ccw' | 'none' = 'none';
+    let finalWidth = apiWidth;
+    let finalHeight = apiHeight;
+
+    if (targetWidth && targetHeight) {
+        // Check for 90-degree swap (with 5px tolerance)
+        const isSwapped = Math.abs(apiWidth - targetHeight) < 5 && Math.abs(apiHeight - targetWidth) < 5;
+        if (isSwapped) {
+            // Usually, rotated images from cameras are 90 CW (the browser handles EXIF)
+            // but the API sees raw bits.
+            rotation = '90cw';
+            finalWidth = targetWidth;
+            finalHeight = targetHeight;
+            console.log(`Rotation mismatch detected! API: ${apiWidth}x${apiHeight}, Target: ${targetWidth}x${targetHeight}. Applying transformation.`);
+        }
+    }
+
+    const transformPt = (x: number, y: number): { x: number, y: number } => {
+        const rot: string = rotation; // Use string to bypass narrowing issue
+        if (rot === '90cw') return { x: apiHeight - y, y: x };
+        if (rot === '90ccw') return { x: y, y: apiWidth - x };
+        return { x, y };
+    };
+
     const walls: Wall[] = [];
     const doors: Door[] = [];
     const windows: LayoutWindow[] = [];
@@ -542,20 +573,29 @@ function processDetectionResult(result: ApiResponseImage): DetectedLayout {
     const rawWindows: ApiPoint[] = [];
     const rawUnclassified: ApiPoint[] = [];
 
-    const { points, classes, Width, Height } = result;
-
     // 1. First Pass: Categorize and Process Walls
     points.forEach((pt, idx) => {
         const cls = classes[idx];
         if (!cls) return;
 
-        if (cls.name === 'wall') {
-            rawWalls.push(pt);
+        // Transform bounding box to match target orientation if needed
+        let x1 = pt.x1, x2 = pt.x2, y1 = pt.y1, y2 = pt.y2;
+        if (rotation !== 'none') {
+            const p1 = transformPt(pt.x1, pt.y1);
+            const p2 = transformPt(pt.x2, pt.y2);
+            x1 = Math.min(p1.x, p2.x);
+            x2 = Math.max(p1.x, p2.x);
+            y1 = Math.min(p1.y, p2.y);
+            y2 = Math.max(p1.y, p2.y);
+        }
 
-            const width = Math.abs(pt.x2 - pt.x1);
-            const height = Math.abs(pt.y2 - pt.y1);
-            const centerX = (pt.x1 + pt.x2) / 2;
-            const centerY = (pt.y1 + pt.y2) / 2;
+        if (cls.name === 'wall') {
+            rawWalls.push({ x1, x2, y1, y2 });
+
+            const width = Math.abs(x2 - x1);
+            const height = Math.abs(y2 - y1);
+            const centerX = (x1 + x2) / 2;
+            const centerY = (y1 + y2) / 2;
 
             let thickness = 10;
             let start: Point;
@@ -564,13 +604,13 @@ function processDetectionResult(result: ApiResponseImage): DetectedLayout {
             if (width > height) {
                 // Horizontal Wall
                 thickness = Math.max(height, 5);
-                start = { x: pt.x1, y: centerY };
-                end = { x: pt.x2, y: centerY };
+                start = { x: x1, y: centerY };
+                end = { x: x2, y: centerY };
             } else {
                 // Vertical Wall
                 thickness = Math.max(width, 5);
-                start = { x: centerX, y: pt.y1 };
-                end = { x: centerX, y: pt.y2 };
+                start = { x: centerX, y: y1 };
+                end = { x: centerX, y: y2 };
             }
 
             walls.push({
@@ -580,23 +620,34 @@ function processDetectionResult(result: ApiResponseImage): DetectedLayout {
                 thickness: thickness
             });
         } else if (cls.name === 'door') {
-            rawDoors.push(pt);
+            rawDoors.push({ x1, x2, y1, y2 });
         } else if (cls.name === 'window') {
-            rawWindows.push(pt);
+            rawWindows.push({ x1, x2, y1, y2 });
         } else if (cls.name === 'unclassified') {
-            rawUnclassified.push(pt);
+            rawUnclassified.push({ x1, x2, y1, y2 });
         }
     });
 
     // 2. Process Doors/Windows
-    points.forEach((pt, idx) => {
+    points.forEach((rawPt, idx) => {
         const cls = classes[idx];
         if (!cls || cls.name === 'wall' || cls.name === 'unclassified') return;
 
-        const width = Math.abs(pt.x2 - pt.x1);
-        const height = Math.abs(pt.y2 - pt.y1);
-        const centerX = (pt.x1 + pt.x2) / 2;
-        const centerY = (pt.y1 + pt.y2) / 2;
+        // Transform bounding box
+        let x1 = rawPt.x1, x2 = rawPt.x2, y1 = rawPt.y1, y2 = rawPt.y2;
+        if (rotation !== 'none') {
+            const p1 = transformPt(rawPt.x1, rawPt.y1);
+            const p2 = transformPt(rawPt.x2, rawPt.y2);
+            x1 = Math.min(p1.x, p2.x);
+            x2 = Math.max(p1.x, p2.x);
+            y1 = Math.min(p1.y, p2.y);
+            y2 = Math.max(p1.y, p2.y);
+        }
+
+        const width = Math.abs(x2 - x1);
+        const height = Math.abs(y2 - y1);
+        const centerX = (x1 + x2) / 2;
+        const centerY = (y1 + y2) / 2;
         const center = { x: centerX, y: centerY };
 
         // Finds nearest wall for rotation/association only.
@@ -673,7 +724,7 @@ function processDetectionResult(result: ApiResponseImage): DetectedLayout {
         }
     });
 
-    const rooms = detectRoomsFromLayoutGeometry(Width, Height, walls, doors, windows);
+    const rooms = detectRoomsFromLayoutGeometry(finalWidth, finalHeight, walls, doors, windows);
 
     return { walls, doors, windows, rooms };
 }

@@ -1,11 +1,18 @@
-// Upload Plan Dialog - Dialog for uploading floor plan images
-// Uses IndexedDB for client-side storage
-
 import React, { useState, useRef, useCallback } from 'react';
 import { X, Upload, ImageIcon, Loader2 } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useLayoutStore } from '../store/useLayoutStore';
 import { layoutImageStore } from '../utils/LayoutImageStore';
+import type { Wall, Door, LayoutWindow, Point, Room, FloorPlan } from '../types/layout';
+import type { DetectedLayout } from '../services/FloorplanApiService';
+import { generateLayoutId } from '../utils/LayoutDrawingTools';
+import { stitchWalls } from '../utils/WallStitching';
+
+interface WallMatch {
+    wall: Wall;
+    end: 'start' | 'end';
+    idx: number;
+}
 
 interface UploadPlanDialogProps {
     isOpen: boolean;
@@ -102,7 +109,7 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
                 try {
                     const { FloorplanApiService } = await import('../services/FloorplanApiService');
                     // We need to pass the raw File object to the API
-                    detectedData = await FloorplanApiService.detectLayout(selectedFile);
+                    detectedData = await FloorplanApiService.detectLayout(selectedFile, img.width, img.height);
 
                     const dbg = FloorplanApiService.getLastDebugInfo?.();
                     if (dbg) {
@@ -125,6 +132,9 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
                             ...dbg
                         });
                     }
+                    // We continue to create the plan even if detection fails, 
+                    // but we might want to let the user see the error first? 
+                    // For now, let's just alert internally and proceed after a short pause or just proceed.
                 } finally {
                     setDetecting(false);
                 }
@@ -139,215 +149,24 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
                 originalFilename: selectedFile.name
             });
 
-            // Prepare entities
-            let walls = detectedData?.walls || [];
-            const doors = detectedData?.doors || [];
-            const windows = detectedData?.windows || [];
-            const rooms = detectedData?.rooms || [];
+            // Prepare entities from detected data
+            // Clone the original walls for preservation
+            const rawWalls: Wall[] = (detectedData?.walls || []).map(w => ({ ...w }));
+            let processedWalls: Wall[] = [...rawWalls];
+
+            const doors: Door[] = detectedData?.doors || [];
+            const windows: LayoutWindow[] = detectedData?.windows || [];
+            const rooms: Room[] = detectedData?.rooms || [];
 
             // =================================================================
-            // POST-PROCESSING: Stitch Walls (Close Gaps at Doors/Windows)
+            // POST-PROCESSING: MAX EFFORT WALL STITCHING
             // =================================================================
-            if (walls.length > 0 && (doors.length > 0 || windows.length > 0)) {
+            if (rawWalls.length > 0 && (doors.length > 0 || windows.length > 0)) {
                 try {
-                    const openings = [...doors, ...windows];
-                    const TOLERANCE = 60; // Increased tolerance to handle series gaps
-
-                    // Helper: Distance
-                    const dist = (p1: { x: number, y: number }, p2: { x: number, y: number }) =>
-                        Math.hypot(p1.x - p2.x, p1.y - p2.y);
-
-                    // Helper: Check alignment (Wall angle vs Opening angle)
-                    const isAligned = (w: any, angle: number) => {
-                        const wx = w.endPoint.x - w.startPoint.x;
-                        const wy = w.endPoint.y - w.startPoint.y;
-                        let wAng = Math.atan2(wy, wx) * 180 / Math.PI;
-                        let diff = Math.abs(wAng - angle) % 180;
-                        if (diff > 90) diff = 180 - diff;
-                        return diff < 30; // 30 deg tolerance
-                    };
-
-                    // PASS 1: Stitching - Extend walls to cover openings
-                    // This creates walls under openings if at least one neighbor exists
-                    const MAX_PASSES = 5;
-                    for (let pass = 0; pass < MAX_PASSES; pass++) {
-                        let changesMade = false;
-
-                        openings.forEach((op: any) => {
-                            const rot = op.rotation || 0;
-                            const rad = rot * Math.PI / 180;
-                            const halfW = op.width / 2;
-                            const dx = Math.cos(rad) * halfW;
-                            const dy = Math.sin(rad) * halfW;
-
-                            const p1 = { x: op.position.x - dx, y: op.position.y - dy };
-                            const p2 = { x: op.position.x + dx, y: op.position.y + dy };
-
-                            let wallNearP1: any = null;
-                            let wallNearP2: any = null;
-
-                            // Find closest candidates
-                            let minD1 = TOLERANCE;
-                            walls.forEach((w: any, idx: number) => {
-                                if (!isAligned(w, rot)) return;
-                                const dStart = dist(w.startPoint, p1);
-                                const dEnd = dist(w.endPoint, p1);
-                                // Check if wall effectively reaches p1
-                                if (dStart < minD1) { minD1 = dStart; wallNearP1 = { wall: w, end: 'start', idx }; }
-                                if (dEnd < minD1) { minD1 = dEnd; wallNearP1 = { wall: w, end: 'end', idx }; }
-                            });
-
-                            let minD2 = TOLERANCE;
-                            walls.forEach((w: any, idx: number) => {
-                                if (!isAligned(w, rot)) return;
-                                const dStart = dist(w.startPoint, p2);
-                                const dEnd = dist(w.endPoint, p2);
-                                if (dStart < minD2) { minD2 = dStart; wallNearP2 = { wall: w, end: 'start', idx }; }
-                                if (dEnd < minD2) { minD2 = dEnd; wallNearP2 = { wall: w, end: 'end', idx }; }
-                            });
-
-                            // Action: Merge or Extend
-                            if (wallNearP1 && wallNearP2 && wallNearP1.idx !== wallNearP2.idx) {
-                                // Merge two walls across the opening
-                                const w1 = walls[wallNearP1.idx];
-                                const w2 = walls[wallNearP2.idx];
-
-                                // Determine new endpoints (furthest points)
-                                // If P1 was near Start, we use End.
-                                const newStart = wallNearP1.end === 'start' ? w1.endPoint : w1.startPoint;
-                                const newEnd = wallNearP2.end === 'start' ? w2.endPoint : w2.startPoint;
-
-                                const mergedWall = {
-                                    ...w1,
-                                    id: `wall_st_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
-                                    startPoint: newStart,
-                                    endPoint: newEnd,
-                                    thickness: Math.max(w1.thickness || 10, w2.thickness || 10)
-                                };
-
-                                walls = walls.filter((w: any) => w.id !== w1.id && w.id !== w2.id);
-                                walls.push(mergedWall);
-                                changesMade = true;
-
-                            } else if (wallNearP1) {
-                                // Extend W1 to cover to P2
-                                const w = walls[wallNearP1.idx];
-                                if (w) {
-                                    if (wallNearP1.end === 'start') w.startPoint = p2;
-                                    else w.endPoint = p2;
-                                    changesMade = true;
-                                }
-                            } else if (wallNearP2) {
-                                // Extend W2 to cover to P1
-                                const w = walls[wallNearP2.idx];
-                                if (w) {
-                                    if (wallNearP2.end === 'start') w.startPoint = p1;
-                                    else w.endPoint = p1;
-                                    changesMade = true;
-                                }
-                            }
-                        });
-
-                        if (!changesMade) break;
-                    }
-
-                    // PASS 2: Merge Collinear Walls (Fixes Series Gaps)
-                    // If we have Wall A -> Door -> Wall B -> Window -> Wall C
-                    // Pass 1 ensures Wall A extends to Door, Wall B extends to Window.
-                    // This pass will merge Wall A and Wall B if they touch/overlap, 
-                    // creating a single continuous wall for the series.
-                    let merging = true;
-                    while (merging) {
-                        merging = false;
-                        for (let i = 0; i < walls.length; i++) {
-                            for (let j = i + 1; j < walls.length; j++) {
-                                const w1 = walls[i];
-                                const w2 = walls[j];
-
-                                // 1. Check Angle Alignment
-                                const a1 = Math.atan2(w1.endPoint.y - w1.startPoint.y, w1.endPoint.x - w1.startPoint.x);
-                                const a2 = Math.atan2(w2.endPoint.y - w2.startPoint.y, w2.endPoint.x - w2.startPoint.x);
-                                let dAng = Math.abs(a1 - a2);
-                                if (dAng > Math.PI) dAng = 2 * Math.PI - dAng; // wrap around
-
-                                // Check for parallel AND same direction, or opposite (walls are lines)
-                                // We check modulo PI roughly
-                                const isParallel = dAng < 0.1 || Math.abs(dAng - Math.PI) < 0.1;
-
-                                if (isParallel) {
-                                    // 2. Check Collinearity (Distance from Line)
-                                    // Project w2 points onto w1 line
-                                    // Line defined by w1.start (P0) and direction (v)
-                                    // Dist = |(P2-P0) x v| / |v|
-                                    const length1 = dist(w1.startPoint, w1.endPoint);
-                                    if (length1 < 1) continue; // skip tiny walls based on valid length
-
-                                    const dx = (w1.endPoint.x - w1.startPoint.x) / length1;
-                                    const dy = (w1.endPoint.y - w1.startPoint.y) / length1;
-
-                                    // Normal vector (-dy, dx)
-                                    // Dist from line = dot product with normal
-                                    const dStart2 = Math.abs((w2.startPoint.x - w1.startPoint.x) * -dy + (w2.startPoint.y - w1.startPoint.y) * dx);
-                                    const dEnd2 = Math.abs((w2.endPoint.x - w1.startPoint.x) * -dy + (w2.endPoint.y - w1.startPoint.y) * dx);
-
-                                    if (dStart2 < 20 && dEnd2 < 20) { // Within 20px of same line axis
-                                        // 3. Check Overlap / Proximity (Gap < Tolerance)
-                                        // Project 1D position along line
-                                        const pos = (p: { x: number, y: number }) =>
-                                            (p.x - w1.startPoint.x) * dx + (p.y - w1.startPoint.y) * dy;
-
-                                        const t1s = 0, t1e = length1;
-                                        const t2s = pos(w2.startPoint);
-                                        const t2e = pos(w2.endPoint);
-
-                                        const min1 = Math.min(t1s, t1e);
-                                        const max1 = Math.max(t1s, t1e);
-                                        const min2 = Math.min(t2s, t2e);
-                                        const max2 = Math.max(t2s, t2e);
-
-                                        // Check gap
-                                        const gap = Math.max(0, min2 - max1, min1 - max2);
-
-                                        if (gap < TOLERANCE) {
-                                            // MERGE!
-                                            // New extent: Min of all to Max of all
-                                            const allPoints = [min1, max1, min2, max2];
-                                            const globalMin = Math.min(...allPoints);
-                                            const globalMax = Math.max(...allPoints);
-
-                                            // Reconstruct points
-                                            const newStart = {
-                                                x: w1.startPoint.x + dx * globalMin,
-                                                y: w1.startPoint.y + dy * globalMin
-                                            };
-                                            const newEnd = {
-                                                x: w1.startPoint.x + dx * globalMax,
-                                                y: w1.startPoint.y + dy * globalMax
-                                            };
-
-                                            const newWall = {
-                                                ...w1,
-                                                id: `wall_merged_${Date.now()}_${Math.random()}`,
-                                                startPoint: newStart,
-                                                endPoint: newEnd,
-                                                thickness: Math.max(w1.thickness || 10, w2.thickness || 10)
-                                            };
-
-                                            // Replace w1 and remove w2
-                                            walls[i] = newWall;
-                                            walls.splice(j, 1);
-                                            merging = true;
-                                            break; // restart inner loop
-                                        }
-                                    }
-                                }
-                            }
-                            if (merging) break; // restart outer loop
-                        }
-                    }
-
+                    processedWalls = stitchWalls(rawWalls, doors, windows, img.width, img.height);
                 } catch (e) {
                     console.error("Auto-stitch failed", e);
+                    processedWalls = rawWalls; // Fallback
                 }
             }
 
@@ -359,7 +178,8 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
                     backgroundImageId: imageId,
                     width: img.width,
                     height: img.height,
-                    walls: walls.length > 0 ? [...currentPlan.walls, ...walls] : currentPlan.walls,
+                    walls: processedWalls.length > 0 ? [...currentPlan.walls, ...processedWalls] : currentPlan.walls,
+                    originalWalls: rawWalls, // Save original
                     doors: doors.length > 0 ? [...currentPlan.doors, ...doors] : currentPlan.doors,
                     windows: windows.length > 0 ? [...currentPlan.windows, ...windows] : currentPlan.windows,
                     rooms: rooms.length > 0 ? [...currentPlan.rooms, ...rooms] : currentPlan.rooms
@@ -369,17 +189,27 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
                 // Assuming we can just dispatch actions or the 'updateFloorPlan' might support 'components'.
                 // If not, we will just have walls for now.
             } else {
-                addFloorPlan({
+                // New Plan
+                const newPlan: FloorPlan = {
+                    id: generateLayoutId('plan'),
                     name: planName,
                     backgroundImageId: imageId,
                     width: img.width,
                     height: img.height,
                     pixelsPerMeter: 50,
-                    walls,
+                    walls: processedWalls,
+                    originalWalls: rawWalls,
                     doors,
                     windows,
-                    rooms
-                });
+                    rooms,
+                    stairs: [],
+                    components: [],
+                    connections: [],
+                    viewportX: 0,
+                    viewportY: 0,
+                    scale: 1
+                };
+                addFloorPlan(newPlan);
             }
 
             // If we have other detected items, we should try to add them

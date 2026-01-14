@@ -25,7 +25,9 @@ import {
     Bug,
     Copy,
     Check,
-    X
+    X,
+    RotateCcw,
+    Wand2
 } from 'lucide-react';
 import { useLayoutStore } from '../store/useLayoutStore';
 import { useTheme } from '../context/ThemeContext';
@@ -121,21 +123,23 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
 }) => {
     const { colors } = useTheme();
     const {
-        getCurrentFloorPlan,
-        updateFloorPlan,
-        drawingState,
         setActiveTool,
+        drawingState,
         setGridSnap,
+        setWallThickness,
+        setContinuousWallMode,
         undo,
         redo,
-        deleteSelected,
-        takeSnapshot,
-        selectedElementIds,
         undoStack,
         redoStack,
+        selectedElementIds,
+        deleteSelected,
         apiDebugData,
-        setWallThickness,
-        setContinuousWallMode
+        resetWallsToOriginal, // New action
+        applySmartStitch,      // New action
+        getCurrentFloorPlan,
+        updateFloorPlan,
+        takeSnapshot
     } = useLayoutStore();
 
     const activeTool = drawingState.activeTool;
@@ -300,6 +304,19 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                         icon={<Upload size={16} />}
                         label="Upload Plan"
                         onClick={onUploadPlan}
+                    />
+
+                    <Divider />
+
+                    <ToolButton
+                        icon={<RotateCcw size={16} />}
+                        label="Reset to Original Scan"
+                        onClick={resetWallsToOriginal}
+                    />
+                    <ToolButton
+                        icon={<Wand2 size={16} />}
+                        label="Apply Smart Stitch"
+                        onClick={applySmartStitch}
                     />
                     <ToolButton
                         icon={copied ? <Check size={16} /> : <Bug size={16} />}

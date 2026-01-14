@@ -208,6 +208,7 @@ export interface FloorPlan {
 
     // Detected/drawn elements
     walls: Wall[];
+    originalWalls?: Wall[]; // Stores original API detection for reset/toggle
     rooms: Room[];
     doors: Door[];
     windows: LayoutWindow[];

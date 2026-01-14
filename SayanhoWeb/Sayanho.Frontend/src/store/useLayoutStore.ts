@@ -16,6 +16,7 @@ import {
     LayoutComponentType
 } from '../types/layout';
 import { generateLayoutId } from '../utils/LayoutDrawingTools';
+import { stitchWalls } from '../utils/WallStitching';
 
 type LayoutSnapshot = {
     floorPlans: FloorPlan[];
@@ -139,6 +140,10 @@ interface LayoutStoreState {
     // Smart detect API debug
     apiDebugData: ApiDebugData | null;
     setApiDebugData: (data: ApiDebugData | null) => void;
+
+    // Wall Post-Processing
+    resetWallsToOriginal: () => void;
+    applySmartStitch: () => void;
 }
 
 const MAX_HISTORY = 20;
@@ -195,6 +200,45 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
     redoStack: [],
     apiDebugData: null,
     setApiDebugData: (data) => set({ apiDebugData: data }),
+
+    // Wall Post-Processing
+    resetWallsToOriginal: () => {
+        const { activeFloorPlanId, floorPlans, takeSnapshot } = get();
+        if (!activeFloorPlanId) return;
+
+        takeSnapshot();
+        set({
+            floorPlans: floorPlans.map(fp => {
+                if (fp.id !== activeFloorPlanId || !fp.originalWalls) return fp;
+                return {
+                    ...fp,
+                    walls: [...fp.originalWalls.map(w => ({ ...w }))] // Restore copy
+                };
+            })
+        });
+    },
+
+    applySmartStitch: () => {
+        const { activeFloorPlanId, floorPlans, takeSnapshot } = get();
+        if (!activeFloorPlanId) return;
+
+        takeSnapshot();
+        const plan = floorPlans.find(fp => fp.id === activeFloorPlanId);
+        if (!plan || !plan.originalWalls) return;
+
+        // Re-run stitching on original walls
+        const stitched = stitchWalls(plan.originalWalls, plan.doors, plan.windows, plan.width, plan.height);
+
+        set({
+            floorPlans: floorPlans.map(fp => {
+                if (fp.id !== activeFloorPlanId) return fp;
+                return {
+                    ...fp,
+                    walls: stitched
+                };
+            })
+        });
+    },
 
     // View mode
     setActiveView: (view) => set({ activeView: view }),
