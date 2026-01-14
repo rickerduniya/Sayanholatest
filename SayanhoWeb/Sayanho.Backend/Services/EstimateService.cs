@@ -35,6 +35,21 @@ namespace Sayanho.Backend.Services
                 allConnectors.AddRange(sheet.StoredConnectors);
             }
 
+            // Fix: Link connectors to items (Deserialization doesn't restore references automatically)
+            // Use ToString() because UniqueID is Guid but connector IDs are strings
+            var itemLookup = allItems.ToDictionary(i => i.UniqueID.ToString(), i => i, StringComparer.OrdinalIgnoreCase);
+            foreach (var connector in allConnectors)
+            {
+                if (connector.SourceItem == null && !string.IsNullOrEmpty(connector.SourceItemId) && itemLookup.ContainsKey(connector.SourceItemId))
+                {
+                    connector.SourceItem = itemLookup[connector.SourceItemId];
+                }
+                if (connector.TargetItem == null && !string.IsNullOrEmpty(connector.TargetItemId) && itemLookup.ContainsKey(connector.TargetItemId))
+                {
+                    connector.TargetItem = itemLookup[connector.TargetItemId];
+                }
+            }
+
             if ((allItems == null || allItems.Count == 0) && (allConnectors == null || allConnectors.Count == 0))
             {
                 throw new InvalidOperationException("No items or connectors to process.");
@@ -58,32 +73,34 @@ namespace Sayanho.Backend.Services
             // It's valid to continue even if there are no remaining items; connectors may still produce rows
 
             // Sort items according to predefined sequence
-            var itemOrder = new Dictionary<string, int>
+            var itemOrder = new Dictionary<string, (int Order, int Cols)>
             {
-                { "Main Switch", 1 },
-                { "End box for TPN SFU", 2 },
-                { "Change Over Switch", 3 },
-                { "VTPN", 4 },
-                { "End box for Vertical TPN DB", 5 },
-                { "MCB", 6 },
-                { "MCCB", 7 },
-                { "SPN DB", 8 },
-                { "MCB Isolator", 9 },
-                { "HTPN", 10 },
-                { "End box for Horizontal TPN DB", 11 },
-                { "Cable", 12 },
-                { "Wiring", 12 },
-                { "Laying", 13 },
-                { "Compression Glands", 14 },
-                { "Finishing Cable Ends", 15 },
-                { "ACB", 16 },
-                { "Point Switch Board", 17 },
-                { "On Board", 18 },
-                { "Avg. 5A Switch Board", 19 }
+                { "Main Switch", (1, 4) },
+                { "End box for TPN SFU", (2, 1) },
+                { "Change Over Switch", (3, 4) },
+                { "VTPN", (4, 4) },
+
+                { "Busbar Chamber", (5, 2) },
+                { "End box for Vertical TPN DB", (6, 4) }, // Shifted indices
+                { "MCB", (7, 4) },
+                { "MCCB", (8, 4) },
+                { "SPN DB", (9, 4) },
+                { "MCB Isolator", (10, 4) },
+                { "HTPN", (11, 4) },
+                { "End box for Horizontal TPN DB", (12, 4) },
+                { "Cable", (13, 4) },
+                { "Wiring", (13, 2) },
+                { "Laying", (14, 1) },
+                { "Compression Glands", (15, 3) },
+                { "Finishing Cable Ends", (16, 3) },
+                { "ACB", (17, 4) },
+                { "Point Switch Board", (18, 2) },
+                { "On Board", (19, 4) },
+                { "Avg. 5A Switch Board", (20, 2) }
             };
 
             allItems = allItems.OrderBy(item =>
-                itemOrder.ContainsKey(item.Name) ? itemOrder[item.Name] : 100
+                itemOrder.ContainsKey(item.Name) ? itemOrder[item.Name].Order : 100
             ).ToList();
 
             ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
@@ -111,14 +128,25 @@ namespace Sayanho.Backend.Services
                 // Calculation method (nested function)
                 void Calculation(string itemname, Dictionary<string, string> dataItem, int condition,
                     string alternativeCompany1 = "", string alternativeCompany2 = "",
-                    float cableLength = -1, int points = -1, int numberofcolumn = 4)
+                    float cableLength = -1, int points = -1, int numberofcolumn = -1)
                 {
+                    // Determine columns from dictionary if not explicitly provided
+                    int actualColumns = numberofcolumn != -1 ? numberofcolumn : (itemOrder.ContainsKey(itemname) ? itemOrder[itemname].Cols : 4);
+
                     string description = dataItem["Description"];
-                    var defaultValues = dataItem.Where(kvp => kvp.Key != "Rate" && kvp.Key != "Description")
-                                                  .ToDictionary(kvp => kvp.Key, kvp => kvp.Value);
+                    
+                    // Take data up to GS
+                    var defaultValues = new Dictionary<string, string>();
+                    foreach (var kvp in dataItem)
+                    {
+                        if (kvp.Key == "Rate" || kvp.Key == "Description") continue;
+                        defaultValues[kvp.Key] = kvp.Value;
+                        if (kvp.Key == "GS") break;
+                    }
+
                     double rate = Convert.ToDouble(dataItem["Rate"]);
 
-                    var subKeys = defaultValues.Keys.TakeLast(numberofcolumn).ToList();
+                    var subKeys = defaultValues.Keys.TakeLast(actualColumns).ToList();
                     var subKeysValues = subKeys.ToDictionary(k => k, k => defaultValues[k]);
 
                     // Ensure uniqueness for Company values
@@ -236,7 +264,8 @@ namespace Sayanho.Backend.Services
                         if (item.Accessories != null && item.Accessories.Count > 0)
                         {
                             var options = item.Accessories[0];
-                            if (options.ContainsKey("endbox_required") && options["endbox_required"] == "true" &&
+                            if (options.ContainsKey("endbox_required") && 
+                                string.Equals(options["endbox_required"], "true", StringComparison.OrdinalIgnoreCase) &&
                                 options.ContainsKey("number_of_endbox"))
                             {
                                 int numberOfEndbox = int.Parse(options["number_of_endbox"]);
@@ -250,8 +279,6 @@ namespace Sayanho.Backend.Services
                                         var dbResult = Sayanho.Core.Logic.DatabaseLoader.LoadDefaultPropertiesFromDatabase(endboxType, 2);
                                         
                                         // Filter based on Main Switch properties (Current Rating, Type, Enclosure)
-                                        // Note: Type is "TPN SFU" which matches the item type we are looking for
-                                        // We need to match Current Rating and Enclosure from the Main Switch properties
                                         var currentRating = propertiesDictionary.ContainsKey("Current Rating") ? propertiesDictionary["Current Rating"] : "";
                                         var enclosure = propertiesDictionary.ContainsKey("Enclosure") ? propertiesDictionary["Enclosure"] : "";
                                         
@@ -262,7 +289,6 @@ namespace Sayanho.Backend.Services
                                             
                                         if (endboxProps != null)
                                         {
-                                            Console.WriteLine($"[ESTIMATE] Auto-fetched properties for {endboxType}");
                                             item.Accessories.Add(endboxProps);
                                         }
                                         else
@@ -279,31 +305,32 @@ namespace Sayanho.Backend.Services
                                 if (item.Accessories.Count > 1)
                                 {
                                     var endboxData = item.Accessories[1];
-                                    Calculation(endboxType, endboxData, 1, item.AlternativeCompany1, item.AlternativeCompany2, -1, numberOfEndbox, 1);
+                                    Calculation(endboxType, endboxData, 1, item.AlternativeCompany1, item.AlternativeCompany2, -1, numberOfEndbox);
                                 }
                             }
                         }
                     }
                     else if (item.Name == "Point Switch Board")
                     {
-                        int points = allConnectors.Count(c => c.SourceItem.UniqueID == item.UniqueID);
+                        int points = allConnectors.Count(c => c.SourceItem != null && c.SourceItem.UniqueID == item.UniqueID);
                         if (points > 0)
                         {
                             Calculation(item.Name, propertiesDictionary, 1,
-                                item.AlternativeCompany1, item.AlternativeCompany2, -1, points, 2);
+                                item.AlternativeCompany1, item.AlternativeCompany2, -1, points);
 
                             // Check if Accessories exist and orboard_required is true
                             if (item.Accessories != null && item.Accessories.Count > 0)
                             {
                                 var options = item.Accessories[0];
-                                if (options.ContainsKey("orboard_required") && options["orboard_required"] == "true" &&
+                                if (options.ContainsKey("orboard_required") && 
+                                    string.Equals(options["orboard_required"], "true", StringComparison.OrdinalIgnoreCase) &&
                                     options.ContainsKey("number_of_onboard"))
                                 {
                                     int numberOfOnboard = int.Parse(options["number_of_onboard"]);
                                     if (item.Accessories.Count > 1)
                                     {
                                         var onboardData = item.Accessories[1];
-                                        Calculation("On Board", onboardData, 1, item.AlternativeCompany1, item.AlternativeCompany2, -1, numberOfOnboard, 2);
+                                        Calculation("On Board", onboardData, 1, item.AlternativeCompany1, item.AlternativeCompany2, -1, numberOfOnboard);
                                     }
                                 }
                             }
@@ -437,6 +464,20 @@ namespace Sayanho.Backend.Services
                             }
                         }
                     }
+                    else if (item.Name == "Busbar Chamber")
+                    {
+                        // Check for Length property
+                         float length = 1;
+                         if (propertiesDictionary.ContainsKey("Length") && float.TryParse(propertiesDictionary["Length"], out float l))
+                         {
+                             length = l;
+                         }
+                         
+                         // Pass length as cableLength argument to force Unit = "Mtr" in DetermineUnit
+                         // and Quantity = length in logic
+                         Calculation(item.Name, propertiesDictionary, 1, 
+                             item.AlternativeCompany1, item.AlternativeCompany2, cableLength: length);
+                    }
                     else
                     {
                         Calculation(item.Name, propertiesDictionary, 1,
@@ -449,7 +490,8 @@ namespace Sayanho.Backend.Services
                         if (item.Accessories != null && item.Accessories.Count > 0)
                         {
                             var options = item.Accessories[0];
-                            if (options.ContainsKey("endbox_required") && options["endbox_required"] == "true" &&
+                            if (options.ContainsKey("endbox_required") && 
+                                string.Equals(options["endbox_required"], "true", StringComparison.OrdinalIgnoreCase) &&
                                 options.ContainsKey("number_of_endbox"))
                             {
                                 int numberOfEndbox = int.Parse(options["number_of_endbox"]);
@@ -463,12 +505,19 @@ namespace Sayanho.Backend.Services
                                         var dbResult = Sayanho.Core.Logic.DatabaseLoader.LoadDefaultPropertiesFromDatabase(endboxType, 2);
                                         var way = propertiesDictionary.ContainsKey("Way") ? propertiesDictionary["Way"] : "";
                                         
+                                        // Robust matching for Way property (digits only)
+                                        string GetDigits(string s) => new string(s.Where(char.IsDigit).ToArray());
+                                        var targetWayDigits = GetDigits(way);
+
                                         var endboxProps = dbResult.Properties.FirstOrDefault(row => 
-                                            row.ContainsKey("Way") && row["Way"].Trim().Equals(way.Trim(), StringComparison.OrdinalIgnoreCase));
+                                        {
+                                            if (!row.ContainsKey("Way")) return false;
+                                            var dbWayDigits = GetDigits(row["Way"]);
+                                            return dbWayDigits == targetWayDigits;
+                                        });
                                             
                                         if (endboxProps != null)
                                         {
-                                            Console.WriteLine($"[ESTIMATE] Auto-fetched properties for {endboxType}");
                                             item.Accessories.Add(endboxProps);
                                         }
                                         else
@@ -485,7 +534,7 @@ namespace Sayanho.Backend.Services
                                 if (item.Accessories.Count > 1)
                                 {
                                     var endboxData = item.Accessories[1];
-                                    Calculation(endboxType, endboxData, 1, item.AlternativeCompany1, item.AlternativeCompany2, -1, numberOfEndbox, 2);
+                                    Calculation(endboxType, endboxData, 1, item.AlternativeCompany1, item.AlternativeCompany2, -1, numberOfEndbox);
                                 }
                             }
                         }
@@ -562,7 +611,8 @@ namespace Sayanho.Backend.Services
                             if (connector.Accessories != null && connector.Accessories.Count > 0)
                             {
                                 var options = connector.Accessories[0];
-                                if (options.ContainsKey("glands_required") && options["glands_required"] == "true" &&
+                                if (options.ContainsKey("glands_required") && 
+                                    string.Equals(options["glands_required"], "true", StringComparison.OrdinalIgnoreCase) &&
                                     options.ContainsKey("number_of_glands"))
                                 {
                                     int numberOfGlands = int.Parse(options["number_of_glands"]);
@@ -574,13 +624,11 @@ namespace Sayanho.Backend.Services
                                         {
                                             var dbResult = Sayanho.Core.Logic.DatabaseLoader.LoadDefaultPropertiesFromDatabase("Compression Glands", 2);
                                             
-                                            // Filter based on Cable properties (Armoured, Core, Size)
-                                            var armoured = connector.Properties.ContainsKey("Armoured") ? connector.Properties["Armoured"] : "";
+                                            // Filter based on Cable properties (Core, Size)
                                             var core = connector.Properties.ContainsKey("Core") ? connector.Properties["Core"] : "";
                                             var size = connector.Properties.ContainsKey("Size") ? connector.Properties["Size"] : "";
                                             
                                             var glandsProps = dbResult.Properties.FirstOrDefault(row => 
-                                                (row.ContainsKey("Armoured") && row["Armoured"].Trim().Equals(armoured.Trim(), StringComparison.OrdinalIgnoreCase)) &&
                                                 (row.ContainsKey("Core") && row["Core"].Trim().Equals(core.Trim(), StringComparison.OrdinalIgnoreCase)) &&
                                                 (row.ContainsKey("Size") && row["Size"].Trim().Equals(size.Trim(), StringComparison.OrdinalIgnoreCase))
                                             );
@@ -592,7 +640,7 @@ namespace Sayanho.Backend.Services
                                             }
                                             else
                                             {
-                                                Console.WriteLine($"[ESTIMATE] Could not find properties for Compression Glands with Armoured={armoured}, Core={core}, Size={size}");
+                                                Console.WriteLine($"[ESTIMATE] Could not find properties for Compression Glands with Core={core}, Size={size}");
                                             }
                                         }
                                         catch (Exception ex)
@@ -604,7 +652,7 @@ namespace Sayanho.Backend.Services
                                     if (connector.Accessories.Count > 1)
                                     {
                                         var glandsData = connector.Accessories[1];
-                                        Calculation("Compression Glands", glandsData, 1, connector.AlternativeCompany1, connector.AlternativeCompany2, -1, numberOfGlands, 3);
+                                        Calculation("Compression Glands", glandsData, 1, connector.AlternativeCompany1, connector.AlternativeCompany2, -1, numberOfGlands);
                                     }
                                 }
                             }
@@ -614,7 +662,8 @@ namespace Sayanho.Backend.Services
                             if (connector.Accessories != null && connector.Accessories.Count > 0)
                             {
                                 var options = connector.Accessories[0];
-                                if (options.ContainsKey("finishing_required") && options["finishing_required"] == "true" &&
+                                if (options.ContainsKey("finishing_required") && 
+                                    string.Equals(options["finishing_required"], "true", StringComparison.OrdinalIgnoreCase) &&
                                     options.ContainsKey("number_of_finishing") && options.ContainsKey("finishing_method"))
                                 {
                                     int numberOfFinishing = int.Parse(options["number_of_finishing"]);
@@ -641,7 +690,7 @@ namespace Sayanho.Backend.Services
                                             
                                         if (finishingProps != null)
                                         {
-                                            Calculation("Finishing Cable Ends", finishingProps, 1, connector.AlternativeCompany1, connector.AlternativeCompany2, -1, numberOfFinishing, 3);
+                                            Calculation("Finishing Cable Ends", finishingProps, 1, connector.AlternativeCompany1, connector.AlternativeCompany2, -1, numberOfFinishing);
                                         }
                                         else
                                         {
@@ -659,7 +708,7 @@ namespace Sayanho.Backend.Services
                         // Process laying properties (only for cables, not for wiring connections)
                         if (connector.Laying != null && connector.Laying.Count > 0 && connector.MaterialType != "Wiring")
                         {
-                            Calculation("Laying", connector.Laying, 1, "", "", cableLength, -1, 4); // Laying usually doesn't have alt companies
+                            Calculation("Laying", connector.Laying, 1, "", "", cableLength, -1); // Laying defaults to 1 col from dictionary
                         }
                     }
                 }
@@ -720,12 +769,12 @@ namespace Sayanho.Backend.Services
                 }
 
                 // Set column widths
-                ws.Column(1).Width = 5;
-                ws.Column(2).Width = 60;
-                ws.Column(3).Width = 5;
-                ws.Column(4).Width = 5;
-                ws.Column(5).Width = 5;
-                ws.Column(6).Width = 5;
+                ws.Column(1).Width = 8;
+                ws.Column(2).Width = 75;
+                ws.Column(3).Width = 10;
+                ws.Column(4).Width = 10;
+                ws.Column(5).Width = 15;
+                ws.Column(6).Width = 20;
 
                 // Add total row
                 int totalRow = currentRow;

@@ -20,7 +20,7 @@ namespace Sayanho.Backend.Controllers
                 "Source", "Main Switch", "Change Over Switch", "SPN DB", 
                 "Bulb", "Tube Light", "Call Bell", "Ceiling Fan", "VTPN", "HTPN", "Point Switch Board",
                 "Avg. 5A Switch Board", "AC Point", "Geyser Point", "Exhaust Fan",
-                "LT Cubical Panel"
+                "LT Cubical Panel", "Busbar Chamber"
             };
 
             var items = new List<ItemData>();
@@ -39,7 +39,8 @@ namespace Sayanho.Backend.Controllers
                     Power = 0,
                     Size = GetDefaultSize(name),
                     IconPath = GetIconPath(name),
-                    ConnectionPoints = GetDefaultConnectionPoints(name)
+                    ConnectionPoints = GetDefaultConnectionPoints(name),
+                    Outgoing = GetDefaultOutgoing(name)
                 };
 
                 // Try to parse power/rate from properties if available
@@ -84,6 +85,7 @@ namespace Sayanho.Backend.Controllers
                 "SPN DB" => new System.Drawing.Size(100, 120),
                 "VTPN" => new System.Drawing.Size(120, 150),
                 "LT Cubical Panel" => new System.Drawing.Size(300, 200),
+                "Busbar Chamber" => new System.Drawing.Size(360, 150), // Default 1m width
                 "HTPN" => new System.Drawing.Size(150, 120),
                 "Bulb" => new System.Drawing.Size(40, 40),
                 "Tube Light" => new System.Drawing.Size(50, 50),
@@ -117,6 +119,7 @@ namespace Sayanho.Backend.Controllers
                     points.Add("Out2", new System.Drawing.Point(50, 120));
                     points.Add("Out3", new System.Drawing.Point(80, 120));
                     break;
+
                 case "VTPN":
                     points.Add("In", new System.Drawing.Point(60, 0));
                     points.Add("Out", new System.Drawing.Point(60, 150));
@@ -124,6 +127,16 @@ namespace Sayanho.Backend.Controllers
                 case "HTPN":
                     points.Add("In", new System.Drawing.Point(75, 0));
                     points.Add("Out", new System.Drawing.Point(75, 120));
+                    break;
+                case "Busbar Chamber":
+                    points.Add("in", new System.Drawing.Point(180, 0)); // Lowercase 'in'
+                    // 1m = 6 outs. Lowercase 'out'
+                    points.Add("out1", new System.Drawing.Point(30, 150));
+                    points.Add("out2", new System.Drawing.Point(90, 150));
+                    points.Add("out3", new System.Drawing.Point(150, 150));
+                    points.Add("out4", new System.Drawing.Point(210, 150));
+                    points.Add("out5", new System.Drawing.Point(270, 150));
+                    points.Add("out6", new System.Drawing.Point(330, 150));
                     break;
                 default:
                     points.Add("In", new System.Drawing.Point(0, 0));
@@ -154,7 +167,8 @@ namespace Sayanho.Backend.Controllers
                 { "Call Bell", "call-bell.svg" },
                 { "Garden Light", "garden-light.svg" },
                 { "Gate Light", "gate-light.svg" },
-                { "LT Cubical Panel", "cubicle_panel.svg" }
+                { "LT Cubical Panel", "cubicle_panel.svg" },
+                { "Busbar Chamber", "busbar_chamber.svg" }
             };
 
             if (iconMap.TryGetValue(name, out var iconFile))
@@ -163,6 +177,25 @@ namespace Sayanho.Backend.Controllers
             }
 
             return "/icons/load.svg"; // Default icon
+        }
+        private List<Dictionary<string, string>> GetDefaultOutgoing(string name)
+        {
+            var outgoing = new List<Dictionary<string, string>>();
+
+            if (name == "Busbar Chamber")
+            {
+                // Default 1m = 6 outputs
+                string[] phases = { "R", "Y", "B" };
+                for (int i = 0; i < 6; i++)
+                {
+                    var outProps = new Dictionary<string, string>();
+                    outProps["Phase"] = phases[i % 3];
+                    outProps["Section"] = "1"; // Default section
+                    outgoing.Add(outProps);
+                }
+            }
+
+            return outgoing;
         }
     }
 }

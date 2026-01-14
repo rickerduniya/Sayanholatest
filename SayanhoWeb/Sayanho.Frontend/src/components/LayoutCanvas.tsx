@@ -170,6 +170,37 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
         return () => window.clearTimeout(t);
     }, [currentPlan?.id, currentPlan?.scale, currentPlan?.viewportX, currentPlan?.viewportY, position.x, position.y, scale, updateViewport]);
 
+    // AUTO-CENTER NEW PLANS
+    // If a plan is loaded and its viewport is roughly 0,0 (default), try to center it
+    useEffect(() => {
+        if (currentPlan && containerSize.width > 0 &&
+            Math.abs(currentPlan.viewportX || 0) < 1 &&
+            Math.abs(currentPlan.viewportY || 0) < 1 &&
+            (currentPlan.walls.length > 0 || currentPlan.rooms.length > 0)) {
+
+            // Use a slight delay to ensure container is ready
+            setTimeout(() => {
+                // Calculate center
+                const padding = 50;
+                const scaleX = (containerSize.width - padding * 2) / currentPlan.width;
+                const scaleY = (containerSize.height - padding * 2) / currentPlan.height;
+                const newScale = Math.min(scaleX, scaleY, 0.8); // 0.8 max scale for initial view
+
+                const newPos = {
+                    x: (containerSize.width - currentPlan.width * newScale) / 2,
+                    y: (containerSize.height - currentPlan.height * newScale) / 2
+                };
+
+                setScale(newScale);
+                setPosition(newPos);
+                onScaleChange?.(newScale);
+
+                // Save this initial viewport
+                updateViewport(newPos.x, newPos.y, newScale);
+            }, 100);
+        }
+    }, [currentPlan?.id, containerSize.width, containerSize.height]);
+
     // PHASE 3.1: Read SLD connectors for Magic Wire feature
     const { sheets, activeSheetId } = useStore();
     const activeSheet = sheets.find(s => s.sheetId === activeSheetId);
@@ -451,9 +482,27 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
 
         // Selection Tool Logic
         if (tool === 'select') {
-            // If clicked on stage (background), start box selection or clear selection
-            if (e.target === e.target.getStage()) {
+            // If clicked on stage (background) or grid background, start box selection or clear selection
+            const isBackground = e.target === e.target.getStage() || e.target.name() === 'grid-background';
+            if (isBackground) {
+                clearSelection();
                 setSelectionBox({ start: point, end: point });
+            }
+            return;
+            return;
+        }
+
+        if (tool === 'pick') {
+            if (currentPlan) {
+                // Simple hit detection for walls
+                // We reuse snapToWall or closestPoint on wall logic, but here we just need to know if we clicked NEAR a wall
+                const snap = snapToWall(point, currentPlan.walls, 20); // 20px tolerance
+                if (snap) {
+                    const { setWallThickness, setActiveTool } = useLayoutStore.getState();
+                    setWallThickness(snap.wall.thickness);
+                    setActiveTool('wall'); // Switch back to wall tool immediately
+                    // Optional: Show some feedback
+                }
             }
             return;
         }
@@ -475,16 +524,19 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                         addWall({
                             startPoint: start,
                             endPoint: end,
-                            thickness: 10
+                            thickness: drawingState.wallThickness ?? 10
                         });
 
-                        // CONTINUOUS DRAWING: Start next segment from end point
-                        setCurrentPath([end]);
+                        if (drawingState.continuousWallMode) {
+                            // CONTINUOUS DRAWING: Start next segment from end point
+                            setCurrentPath([end]);
+                        } else {
+                            // SINGLE LINE MODE: Stop drawing
+                            setIsDrawing(false);
+                            setCurrentPath([]);
+                        }
                     }
                 }
-                // Do NOT stop drawing (Continuous Mode)
-                // setIsDrawing(false); 
-                // setCurrentPath([]);
             }
             return;
         }
@@ -532,13 +584,35 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
         }
 
         if (tool === 'component' && drawingState.selectedComponentType) {
-            const componentDef = getLayoutComponentDef(drawingState.selectedComponentType);
+            let placePos = point;
+            let rotation = 0;
+
+            // Smart Snap to Wall
+            // If we are close to a wall, snap to it and align rotation
+            if (currentPlan) {
+                const snapInfo = snapToWall(point, currentPlan.walls, 25); // 25px tolerance
+                if (snapInfo) {
+                    placePos = snapInfo.snapPoint;
+
+                    // Calculate wall angle
+                    const wallAngle = Math.atan2(
+                        snapInfo.wall.endPoint.y - snapInfo.wall.startPoint.y,
+                        snapInfo.wall.endPoint.x - snapInfo.wall.startPoint.x
+                    ) * 180 / Math.PI;
+
+                    rotation = wallAngle;
+
+                    // Optional: Offset from wall center based on component depth?
+                    // For now, center on wall line is standard for symbols like switches
+                }
+            }
+
             addComponent({
                 type: drawingState.selectedComponentType,
-                position: point,
-                rotation: 0,
+                position: placePos,
+                rotation: rotation,
                 properties: {},
-                roomId: currentPlan ? findRoomAtPoint(point, currentPlan.rooms)?.id : undefined
+                roomId: currentPlan ? findRoomAtPoint(placePos, currentPlan.rooms)?.id : undefined
             });
             return;
         }
@@ -600,7 +674,9 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
 
             // Update HUD
             const pxLen = Math.hypot(end.x - start.x, end.y - start.y);
-            const label = getDistanceLabel(pxLen, currentPlan?.pixelsPerMeter || 50);
+            const angle = Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI;
+            const normalizedAngle = (angle < 0 ? angle + 360 : angle).toFixed(1);
+            const label = `${getDistanceLabel(pxLen, currentPlan?.pixelsPerMeter || 50)} | ${normalizedAngle}°`;
 
             // Screen coordinates for HUD
             const stage = stageRef.current;
@@ -650,37 +726,9 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
     }, [deleteSelected, setActiveTool]);
 
     // Render grid
+    // Render grid - DISABLED (User requested removal)
     const renderGrid = () => {
-        if (!currentPlan) return null;
-
-        const gridSize = drawingState.gridSize;
-        const lines: JSX.Element[] = [];
-
-        // Vertical lines
-        for (let x = 0; x <= currentPlan.width; x += gridSize) {
-            lines.push(
-                <Line
-                    key={`v-${x}`}
-                    points={[x, 0, x, currentPlan.height]}
-                    stroke={theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}
-                    strokeWidth={1}
-                />
-            );
-        }
-
-        // Horizontal lines
-        for (let y = 0; y <= currentPlan.height; y += gridSize) {
-            lines.push(
-                <Line
-                    key={`h-${y}`}
-                    points={[0, y, currentPlan.width, y]}
-                    stroke={theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.05)'}
-                    strokeWidth={1}
-                />
-            );
-        }
-
-        return <Group>{lines}</Group>;
+        return null;
     };
 
     // Render rooms
@@ -695,7 +743,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
             const fillColor = room.color || DETECTED_ROOM_PALETTE[idx % DETECTED_ROOM_PALETTE.length];
 
             return (
-                <Group key={room.id}>
+                <Group key={room.id} onClick={() => selectElement(room.id)}>
                     <Line
                         points={[...points, points[0], points[1]]}
                         fill={fillColor}
@@ -703,7 +751,6 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                         strokeWidth={isSelected ? 2 : 0}
                         closed
                         lineJoin="miter"
-                        onClick={() => selectElement(room.id)}
                     />
                     <Text
                         x={centroid.x - 30}
@@ -713,6 +760,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                         fill={theme === 'dark' ? '#fff' : '#333'}
                         align="center"
                         width={60}
+                        listening={false} // Allow clicks to pass through to the Group
                     />
                 </Group>
             );
@@ -742,7 +790,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                         strokeWidth={wall.thickness}
                         lineCap="butt"
                         onClick={() => selectElement(wall.id)}
-                        draggable
+                        draggable={drawingState.activeTool === 'select'}
                         onDragStart={() => takeSnapshot()}
                         onDragEnd={(e) => {
                             const dx = e.target.x();
@@ -861,21 +909,66 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                     y={door.position.y}
                     rotation={rotation}
                     onClick={() => selectElement(door.id)}
-                    draggable
-                    onDragStart={() => takeSnapshot()}
-                    onDragEnd={(e) => {
+                    draggable={drawingState.activeTool === 'select'}
+                    dragBoundFunc={(pos) => {
+                        // Slide-on-Wall Logic
+                        const worldX = (pos.x - position.x) / scale;
+                        const worldY = (pos.y - position.y) / scale;
+
+                        // 1. Try to snap to ANY wall (not just current)
+                        // Use a generous tolerance so it feels magnetic (e.g., 50px)
+                        if (currentPlan) {
+                            const snap = snapToWall({ x: worldX, y: worldY }, currentPlan.walls, 50);
+                            if (snap) {
+                                // Return SCREEN coordinates of the snap point
+                                return {
+                                    x: snap.snapPoint.x * scale + position.x,
+                                    y: snap.snapPoint.y * scale + position.y
+                                };
+                            }
+                        }
+
+                        return pos;
+                    }}
+                    onDragMove={(e) => {
+                        // Auto-Rotate during drag
                         const rawPos = { x: e.target.x(), y: e.target.y() };
+                        if (currentPlan) {
+                            const snap = snapToWall(rawPos, currentPlan.walls, 80);
+                            if (snap) {
+                                // Update rotation visually immediately
+                                const angle = Math.atan2(
+                                    snap.wall.endPoint.y - snap.wall.startPoint.y,
+                                    snap.wall.endPoint.x - snap.wall.startPoint.x
+                                ) * 180 / Math.PI;
+                                e.target.rotation(angle);
+                            }
+                        }
+                        e.cancelBubble = true;
+                    }}
+                    onDragStart={(e) => {
+                        takeSnapshot();
+                        e.cancelBubble = true;
+                    }}
+                    onDragEnd={(e) => {
+                        e.cancelBubble = true;
+                        const rawPos = { x: e.target.x(), y: e.target.y() };
+
+                        // Final commit
                         const snap = snapToWall(rawPos, currentPlan.walls, 80);
                         if (snap) {
-                            const snapRot = Math.atan2(
+                            const angle = Math.atan2(
                                 snap.wall.endPoint.y - snap.wall.startPoint.y,
                                 snap.wall.endPoint.x - snap.wall.startPoint.x
                             ) * 180 / Math.PI;
-                            updateDoor(door.id, { position: snap.snapPoint, wallId: snap.wall.id, rotation: snapRot });
-                            return;
+                            updateDoor(door.id, {
+                                position: snap.snapPoint,
+                                rotation: angle,
+                                wallId: snap.wall.id
+                            });
+                        } else {
+                            updateDoor(door.id, { position: rawPos, wallId: 'orphan' });
                         }
-
-                        updateDoor(door.id, { position: rawPos, wallId: 'orphan', rotation });
                     }}
                 >
                     {/* Door opening gap */}
@@ -1073,7 +1166,35 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                     stroke={isSelected ? '#3b82f6' : '#3b82f6'}
                     strokeWidth={isSelected ? 3 : 1}
                     onClick={() => selectElement(win.id)}
-                    draggable
+                    draggable={drawingState.activeTool === 'select'}
+                    dragBoundFunc={(pos) => {
+                        const worldX = (pos.x - position.x) / scale;
+                        const worldY = (pos.y - position.y) / scale;
+                        if (currentPlan) {
+                            const snap = snapToWall({ x: worldX, y: worldY }, currentPlan.walls, 50);
+                            if (snap) {
+                                return {
+                                    x: snap.snapPoint.x * scale + position.x,
+                                    y: snap.snapPoint.y * scale + position.y
+                                };
+                            }
+                        }
+                        return pos;
+                    }}
+                    onDragMove={(e) => {
+                        const rawPos = { x: e.target.x(), y: e.target.y() };
+                        if (currentPlan) {
+                            const snap = snapToWall(rawPos, currentPlan.walls, 80);
+                            if (snap) {
+                                const angle = Math.atan2(
+                                    snap.wall.endPoint.y - snap.wall.startPoint.y,
+                                    snap.wall.endPoint.x - snap.wall.startPoint.x
+                                ) * 180 / Math.PI;
+                                e.target.rotation(angle);
+                            }
+                        }
+                        e.cancelBubble = true;
+                    }}
                     onDragStart={() => takeSnapshot()}
                     onDragEnd={(e) => {
                         const rawPos = { x: e.target.x(), y: e.target.y() };
@@ -1354,7 +1475,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                             componentId: comp.id
                         });
                     }}
-                    draggable
+                    draggable={drawingState.activeTool === 'select'}
                     onDragStart={(e) => {
                         takeSnapshot();
                         e.cancelBubble = true;
@@ -1376,49 +1497,52 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                         });
                     }}
                 >
-                    {image ? (
-                        <>
-                            {/* Selection Glow */}
-                            {isSelected && (
-                                <Rect
-                                    x={-def.size.width / 2 - 4}
-                                    y={-def.size.height / 2 - 4}
-                                    width={def.size.width + 8}
-                                    height={def.size.height + 8}
-                                    stroke="#3b82f6"
-                                    strokeWidth={2}
-                                    cornerRadius={4}
-                                    dash={[4, 4]}
+                    {
+                        image ? (
+                            <>
+                                {/* Selection Glow */}
+                                {
+                                    isSelected && (
+                                        <Rect
+                                            x={-def.size.width / 2 - 4}
+                                            y={-def.size.height / 2 - 4}
+                                            width={def.size.width + 8}
+                                            height={def.size.height + 8}
+                                            stroke="#3b82f6"
+                                            strokeWidth={2}
+                                            cornerRadius={4}
+                                            dash={[4, 4]}
+                                        />
+                                    )
+                                }
+                                <KonvaImage
+                                    image={image}
+                                    width={def.size.width}
+                                    height={def.size.height}
+                                    offset={{ x: def.size.width / 2, y: def.size.height / 2 }}
                                 />
-                            )}
-                            <KonvaImage
-                                image={image}
-                                width={def.size.width}
-                                height={def.size.height}
-                                offset={{ x: def.size.width / 2, y: def.size.height / 2 }}
-                            />
-                        </>
-                    ) : (
-                        <Group>
-                            {/* Fallback for missing icons */}
-                            <Circle
-                                radius={def.size.width / 2}
-                                fill={theme === 'dark' ? '#374151' : '#fff'}
-                                stroke={isSelected ? '#3b82f6' : colors.border}
-                                strokeWidth={isSelected ? 2 : 1}
-                            />
-                            <Text
-                                x={-def.size.width / 2}
-                                y={-8}
-                                width={def.size.width}
-                                text={def.symbol}
-                                fontSize={14}
-                                fill={theme === 'dark' ? '#fff' : '#333'}
-                                align="center"
-                            />
-                        </Group>
-                    )}
-                </Group>
+                            </>
+                        ) : (
+                            <Group>
+                                {/* Fallback for missing icons */}
+                                <Circle
+                                    radius={def.size.width / 2}
+                                    fill={theme === 'dark' ? '#374151' : '#fff'}
+                                    stroke={isSelected ? '#3b82f6' : colors.border}
+                                    strokeWidth={isSelected ? 2 : 1}
+                                />
+                                <Text
+                                    x={-def.size.width / 2}
+                                    y={-8}
+                                    width={def.size.width}
+                                    text={def.symbol}
+                                    fontSize={14}
+                                    fill={theme === 'dark' ? '#fff' : '#333'}
+                                    align="center"
+                                />
+                            </Group>
+                        )}
+                </Group >
             );
         });
     };
@@ -1441,9 +1565,9 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                         currentPath[1].y
                     ]}
                     stroke="#3b82f6"
-                    strokeWidth={10}
+                    strokeWidth={drawingState.wallThickness ?? 10}
                     lineCap="round"
-                    dash={[10, 5]}
+                    opacity={0.4}
                 />
             );
         }
@@ -1590,6 +1714,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                         fill={theme === 'dark' ? '#1f2937' : '#fff'}
                         stroke={colors.border}
                         strokeWidth={2}
+                        name="grid-background"
                     />
 
                     {/* Background image */}
@@ -1601,6 +1726,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                             width={currentPlan.width}
                             height={currentPlan.height}
                             opacity={0.5}
+                            name="grid-background"
                         />
                     )}
 

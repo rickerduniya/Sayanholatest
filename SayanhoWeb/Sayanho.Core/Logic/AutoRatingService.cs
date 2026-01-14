@@ -389,6 +389,22 @@ namespace Sayanho.Core.Logic
 
                 double maxCurrent = 0;
 
+                // For Busbar Chamber, calculate total outgoing load current
+                if (item.Name.Contains("Busbar Chamber"))
+                {
+                    var outgoingConnectors = allConnectors.Where(c => c.SourceItem == item).ToList();
+                    foreach (var connector in outgoingConnectors)
+                    {
+                        if (connector.CurrentValues != null)
+                        {
+                            double rCurrent = ParseCurrent(connector.CurrentValues.GetValueOrDefault("R_Current", "0 A"));
+                            double yCurrent = ParseCurrent(connector.CurrentValues.GetValueOrDefault("Y_Current", "0 A"));
+                            double bCurrent = ParseCurrent(connector.CurrentValues.GetValueOrDefault("B_Current", "0 A"));
+                            double connectorMaxCurrent = Math.Max(rCurrent, Math.Max(yCurrent, bCurrent));
+                            maxCurrent += connectorMaxCurrent;
+                        }
+                    }
+                }
                 // For distribution boards (VTPN, HTPN, SPN DB), calculate total incoming current
                 if (item.Name.Contains("VTPN") || item.Name.Contains("HTPN") || item.Name.Contains("SPN DB"))
                 {
@@ -445,6 +461,7 @@ namespace Sayanho.Core.Logic
             {
                 new[] { "Load" }, // Loads first (though they don't need rating updates)
                 new[] { "MCB", "MCCB", "Switch" }, // Individual switches
+                new[] { "Busbar Chamber" }, // Busbar Chamber
                 new[] { "SPN DB", "HTPN" }, // Distribution boards
                 new[] { "VTPN", "Cubical Panel" }, // Main distribution panels
                 new[] { "Main Switch", "Change Over Switch" } // Main switches
@@ -498,6 +515,10 @@ namespace Sayanho.Core.Logic
                 else if (component.Name.Contains("Cubical Panel"))
                 {
                     SetCubicalPanelRating(component, safetyMargin);
+                }
+                else if (component.Name.Contains("Busbar Chamber"))
+                {
+                    SetBusbarChamberRating(component, minimumRating);
                 }
                 else if (component.Name.Contains("HTPN"))
                 {
@@ -1166,8 +1187,77 @@ namespace Sayanho.Core.Logic
         /// </summary>
         private bool IsElectricalComponent(CanvasItem item)
         {
-            var electricalComponents = new[] { "VTPN", "HTPN", "SPN DB", "Main Switch", "Change Over Switch" };
+            var electricalComponents = new[] { "VTPN", "HTPN", "SPN DB", "Busbar Chamber", "Main Switch", "Change Over Switch" };
             return electricalComponents.Any(type => item.Name.Contains(type));
+        }
+
+        /// <summary>
+        /// Set Busbar Chamber rating based on total outgoing load current (with safety margin)
+        /// and choose next available rating from database while keeping other configuration keys fixed.
+        /// </summary>
+        private void SetBusbarChamberRating(CanvasItem busbar, double minimumRating)
+        {
+            if (busbar.Properties == null || !busbar.Properties.Any())
+                return;
+
+            var properties = busbar.Properties.First();
+
+            // Load available schedule rows
+            var dbRows = DatabaseLoader.LoadDefaultPropertiesFromDatabase("Busbar Chamber", 2).Properties;
+            if (dbRows == null || dbRows.Count == 0)
+            {
+                Console.WriteLine("Warning: No Busbar Chamber schedule rows found in database.");
+                return;
+            }
+
+            // Determine which keys define the configuration (exclude rating and computed fields)
+            var firstRow = dbRows.First();
+            var configKeys = firstRow.Keys
+                .Where(k => !string.Equals(k, "Current Rating", StringComparison.OrdinalIgnoreCase)
+                         && !string.Equals(k, "Rate", StringComparison.OrdinalIgnoreCase)
+                         && !string.Equals(k, "Description", StringComparison.OrdinalIgnoreCase)
+                         && !string.Equals(k, "GS", StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            // Filter rows by existing non-empty configuration fields on the item
+            var candidates = dbRows.Where(row =>
+            {
+                foreach (var key in configKeys)
+                {
+                    if (properties.TryGetValue(key, out var val) && !string.IsNullOrWhiteSpace(val))
+                    {
+                        if (!row.TryGetValue(key, out var rowVal)) return false;
+                        if (!string.Equals(rowVal?.ToString() ?? string.Empty, val, StringComparison.Ordinal)) return false;
+                    }
+                }
+                return true;
+            }).ToList();
+
+            if (candidates.Count == 0)
+            {
+                // Fallback to all rows if config-based filtering yields nothing
+                Console.WriteLine("Warning: No Busbar Chamber rows matched current configuration; falling back to all options.");
+                candidates = dbRows;
+            }
+
+            candidates = candidates
+                .OrderBy(r => ParseRating(r.GetValueOrDefault("Current Rating", "0")?.ToString()))
+                .ToList();
+
+            var selected = SelectOptimalRating(candidates, minimumRating, "Busbar Chamber");
+            if (selected == null)
+            {
+                Console.WriteLine($"Warning: No suitable Busbar Chamber rating found for {minimumRating:F2} A");
+                return;
+            }
+
+            // Update only rating-dependent fields, keeping other configuration keys intact
+            if (selected.ContainsKey("Current Rating")) properties["Current Rating"] = selected["Current Rating"];
+            if (selected.ContainsKey("Rate")) properties["Rate"] = selected["Rate"];
+            if (selected.ContainsKey("Description")) properties["Description"] = selected["Description"];
+            if (selected.ContainsKey("GS")) properties["GS"] = selected["GS"];
+
+            Console.WriteLine($"Busbar Chamber: Selected {properties.GetValueOrDefault("Current Rating", "") } for required {minimumRating:F2} A");
         }
 
         /// <summary>

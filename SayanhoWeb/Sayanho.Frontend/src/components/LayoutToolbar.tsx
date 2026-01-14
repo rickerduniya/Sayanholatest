@@ -133,7 +133,9 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
         selectedElementIds,
         undoStack,
         redoStack,
-        apiDebugData
+        apiDebugData,
+        setWallThickness,
+        setContinuousWallMode
     } = useLayoutStore();
 
     const activeTool = drawingState.activeTool;
@@ -184,6 +186,7 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
         { tool: 'door', icon: <DoorOpen size={16} />, label: 'Add Door', shortcut: 'D' },
         { tool: 'window', icon: <Grid3X3 size={16} />, label: 'Add Window', shortcut: 'N' },
         { tool: 'stair', icon: <ArrowUpFromLine size={16} />, label: 'Add Stairs', shortcut: 'S' },
+        { tool: 'pick', icon: <Pencil size={16} className="rotate-180" />, label: 'Pick Thickness', shortcut: 'P' },
     ];
 
     return (
@@ -219,6 +222,34 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                         />
                     ))}
                 </ToolGroup>
+
+                {activeTool === 'wall' && (
+                    <>
+                        <Divider />
+                        <ToolGroup>
+                            <div className="flex items-center gap-2 px-2 border-x border-black/5 dark:border-white/5">
+                                <span className="text-[10px] font-bold uppercase opacity-50 tracking-tighter">Wall T:</span>
+                                <input
+                                    type="number"
+                                    min="1"
+                                    max="100"
+                                    value={drawingState.wallThickness}
+                                    onChange={(e) => setWallThickness(parseInt(e.target.value) || 10)}
+                                    className="w-10 bg-black/10 dark:bg-white/10 rounded px-1 py-0.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                    style={{ color: colors.text }}
+                                />
+                                <span className="text-[10px] opacity-40">px</span>
+                            </div>
+
+                            <ToolButton
+                                icon={<Sparkles size={14} className={drawingState.continuousWallMode ? "text-blue-500" : "opacity-30"} />}
+                                label={drawingState.continuousWallMode ? "Mode: Continuous (Chain)" : "Mode: Single Line"}
+                                active={drawingState.continuousWallMode}
+                                onClick={() => setContinuousWallMode(!drawingState.continuousWallMode)}
+                            />
+                        </ToolGroup>
+                    </>
+                )}
 
                 <Divider />
 

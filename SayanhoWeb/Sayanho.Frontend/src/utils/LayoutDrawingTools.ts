@@ -275,7 +275,8 @@ export const DRAWING_TOOL_CURSORS: Record<DrawingTool, string> = {
     stair: 'crosshair',
     component: 'copy',
     connection: 'crosshair',
-    erase: 'not-allowed'
+    erase: 'not-allowed',
+    pick: 'help'
 };
 
 export const DRAWING_TOOL_INSTRUCTIONS: Record<DrawingTool, string> = {
@@ -288,7 +289,8 @@ export const DRAWING_TOOL_INSTRUCTIONS: Record<DrawingTool, string> = {
     stair: 'Click corners to define stair area',
     component: 'Click to place component',
     connection: 'Click source, then click target to connect',
-    erase: 'Click elements to delete them'
+    erase: 'Click elements to delete them',
+    pick: 'Click a wall to pick its thickness'
 };
 
 // ============================================================================

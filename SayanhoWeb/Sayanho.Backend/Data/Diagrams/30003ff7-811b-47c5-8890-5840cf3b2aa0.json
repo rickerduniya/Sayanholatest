@@ -1,0 +1,2657 @@
+{
+  "ProjectId": "30003ff7-811b-47c5-8890-5840cf3b2aa0",
+  "Name": "test",
+  "CanvasSheets": [
+    {
+      "SheetId": "default",
+      "Name": "Sheet 1",
+      "CanvasItems": [
+        {
+          "UniqueID": "ce622bbd-21cb-43ba-ab79-e22ba9a69152",
+          "Name": "Busbar Chamber",
+          "Position": {
+            "IsEmpty": false,
+            "X": 949,
+            "Y": 388
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 360,
+            "Height": 150
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 180,
+              "Y": 0
+            },
+            "out1_ALL": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 150
+            },
+            "out2_Y": {
+              "IsEmpty": false,
+              "X": 90,
+              "Y": 150
+            },
+            "out3_B": {
+              "IsEmpty": false,
+              "X": 150,
+              "Y": 150
+            },
+            "out4_R": {
+              "IsEmpty": false,
+              "X": 210,
+              "Y": 150
+            },
+            "out5_Y": {
+              "IsEmpty": false,
+              "X": 270,
+              "Y": 150
+            },
+            "out6_B": {
+              "IsEmpty": false,
+              "X": 330,
+              "Y": 150
+            }
+          },
+          "Properties": [
+            {
+              "Material": "Aluminum",
+              "Bars": "4",
+              "Current Rating": "63 A",
+              "Rate": "2399",
+              "Description": "Supplying \u0026 fixing sheet metal (16 SWG) Iron Clad Busbar chambers on angle iron frame on wall, incl. earthing attachment and painting as required \u2013 (As per Drawing no. 470 of PWD Specification Book \u2013 May 1991) - Bar Dimension - 4 x 20x5mm , Box Dimension-500x150mm ",
+              "GS": "PWD/GS D-12: 19(a)",
+              "Way": "4",
+              "Length": "1"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/busbar_chamber.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [
+            {
+              "Phase": "ALL"
+            }
+          ],
+          "Accessories": [
+            {}
+          ]
+        },
+        {
+          "UniqueID": "4e2c36e3-7f50-42d5-8fc4-a5f934857f26",
+          "Name": "Main Switch",
+          "Position": {
+            "IsEmpty": false,
+            "X": 1342,
+            "Y": 92
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 100,
+            "Height": 100
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 0
+            },
+            "out": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 100
+            }
+          },
+          "Properties": [
+            {
+              "Type": "TPN SFU",
+              "Enclosure": "Sheet steel enclosure",
+              "Mounting ": "Flat Iron frame",
+              "Current Rating": "32A",
+              "Voltage": "415V - TPN",
+              "Company": "Siemens",
+              "Rate": "3904",
+              "Description": "Supplying and fixing following TPN SFU with sheet steel enclosure on flat iron frame on wall with nuts bolts etc incl. S \u0026 F 3 nos. DIN type HRC fuse as per rating",
+              "GS": "PWD/GS -D-3 : 4(a)",
+              "Way": "4"
+            }
+          ],
+          "AlternativeCompany1": "Siemens",
+          "AlternativeCompany2": "L\u0026T",
+          "SvgContent": null,
+          "IconPath": "/icons/main switch.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": [
+            {
+              "endbox_required": "false",
+              "number_of_endbox": "2"
+            }
+          ]
+        },
+        {
+          "UniqueID": "7175d5a5-18ab-45c3-8f23-94abf28f5fbc",
+          "Name": "Source",
+          "Position": {
+            "IsEmpty": false,
+            "X": 1566,
+            "Y": -74
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 60,
+            "Height": 60
+          },
+          "ConnectionPoints": {
+            "out": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 60
+            }
+          },
+          "Properties": [
+            {
+              "Type": "3-phase",
+              "Voltage": "415 V",
+              "Frequency": "50 Hz"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/source.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": []
+        },
+        {
+          "UniqueID": "72f0c0e7-e354-41ec-969c-3d0664c02b12",
+          "Name": "HTPN",
+          "Position": {
+            "IsEmpty": false,
+            "X": 439,
+            "Y": 687
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 672,
+            "Height": 170
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 336,
+              "Y": 0
+            },
+            "out1_Red Phase": {
+              "IsEmpty": false,
+              "X": 40,
+              "Y": 170
+            },
+            "out2_Red Phase": {
+              "IsEmpty": false,
+              "X": 95,
+              "Y": 170
+            },
+            "out3_Red Phase": {
+              "IsEmpty": false,
+              "X": 150,
+              "Y": 170
+            },
+            "out4_Red Phase": {
+              "IsEmpty": false,
+              "X": 205,
+              "Y": 170
+            },
+            "out1_Yellow Phase": {
+              "IsEmpty": false,
+              "X": 260,
+              "Y": 170
+            },
+            "out2_Yellow Phase": {
+              "IsEmpty": false,
+              "X": 315,
+              "Y": 170
+            },
+            "out3_Yellow Phase": {
+              "IsEmpty": false,
+              "X": 370,
+              "Y": 170
+            },
+            "out4_Yellow Phase": {
+              "IsEmpty": false,
+              "X": 425,
+              "Y": 170
+            },
+            "out1_Blue Phase": {
+              "IsEmpty": false,
+              "X": 480,
+              "Y": 170
+            },
+            "out2_Blue Phase": {
+              "IsEmpty": false,
+              "X": 535,
+              "Y": 170
+            },
+            "out3_Blue Phase": {
+              "IsEmpty": false,
+              "X": 590,
+              "Y": 170
+            },
+            "out4_Blue Phase": {
+              "IsEmpty": false,
+              "X": 645,
+              "Y": 170
+            }
+          },
+          "Properties": [
+            {
+              "Way": "4 way",
+              "Company": "Legrand",
+              "Rate": "2851",
+              "Description": "Supplying and fixing following double door Horizontal TPN MCB Distribution board with IP-42/43 protection, concealed in wall after cutting the wall \u0026 mending good the damages to original finish incl. Inter connection with suitable size of copper wire and neutral link \u0026 provision for earthing attachment",
+              "GS": "PWD/GS -D-9:13"
+            }
+          ],
+          "AlternativeCompany1": "Legrand",
+          "AlternativeCompany2": "Schneider",
+          "SvgContent": null,
+          "IconPath": "/icons/HTPN.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {
+            "Current Rating": "32 A",
+            "Pole": "FP",
+            "Company": "Legrand",
+            "Rate": "1196",
+            "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+            "GS": "PWD/GS -D-6:7"
+          },
+          "Outgoing": [
+            {
+              "Current Rating": "6 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "10 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "10 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "16 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "6 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "10 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "10 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "16 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "10 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "10 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "10 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "16 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            }
+          ],
+          "Accessories": []
+        },
+        {
+          "UniqueID": "7508bc1a-d3a2-45ff-8d93-b3d57dee36eb",
+          "Name": "SPN DB",
+          "Position": {
+            "IsEmpty": false,
+            "X": -856,
+            "Y": 973
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 720,
+            "Height": 170
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 360,
+              "Y": 0
+            },
+            "out1": {
+              "IsEmpty": false,
+              "X": 40,
+              "Y": 170
+            },
+            "out2": {
+              "IsEmpty": false,
+              "X": 95,
+              "Y": 170
+            },
+            "out3": {
+              "IsEmpty": false,
+              "X": 150,
+              "Y": 170
+            },
+            "out4": {
+              "IsEmpty": false,
+              "X": 205,
+              "Y": 170
+            },
+            "out5": {
+              "IsEmpty": false,
+              "X": 260,
+              "Y": 170
+            },
+            "out6": {
+              "IsEmpty": false,
+              "X": 315,
+              "Y": 170
+            },
+            "out7": {
+              "IsEmpty": false,
+              "X": 370,
+              "Y": 170
+            },
+            "out8": {
+              "IsEmpty": false,
+              "X": 425,
+              "Y": 170
+            },
+            "out9": {
+              "IsEmpty": false,
+              "X": 480,
+              "Y": 170
+            },
+            "out10": {
+              "IsEmpty": false,
+              "X": 535,
+              "Y": 170
+            },
+            "out11": {
+              "IsEmpty": false,
+              "X": 590,
+              "Y": 170
+            },
+            "out12": {
+              "IsEmpty": false,
+              "X": 645,
+              "Y": 170
+            }
+          },
+          "Properties": [
+            {
+              "Way": "2\u002B12 way",
+              "Company": "ABB",
+              "Rate": "1477",
+              "Description": "Supplying and fixing following double-door SPN MCB Distribution Board with IP-42/43 protection, concealed in wall after cutting the wall \u0026 mending good the damages to original finish incl. Inter connection with suitable size of copper wire and neutral link \u0026 provision for earthing attachment.",
+              "GS": "PWD/GS -D-9:13"
+            }
+          ],
+          "AlternativeCompany1": "Legrand",
+          "AlternativeCompany2": "Schneider",
+          "SvgContent": null,
+          "IconPath": "/icons/SPN DB.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {
+            "Current Rating": "25 A",
+            "Pole": "DP",
+            "Company": "ABB",
+            "Rate": "292",
+            "Description": "Supplying and fixing following 240/415 V MCB Isolator on din rail of existing DBs and necessary connection.",
+            "GS": "PWD/GS -D-6:6"
+          },
+          "Outgoing": [
+            {
+              "Current Rating": "6 A",
+              "Pole": "SP",
+              "Company": "ABB",
+              "Rate": "171",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "6 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "6 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "6 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "6 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "6 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "6 A",
+              "Pole": "SP",
+              "Company": "ABB",
+              "Rate": "171",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "6 A",
+              "Pole": "SP",
+              "Company": "ABB",
+              "Rate": "171",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "6 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "6 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "6 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            },
+            {
+              "Current Rating": "6 A",
+              "Pole": "SP",
+              "Company": "Legrand",
+              "Rate": "190",
+              "Description": "Supplying and fixing following 240/415 V MCB of Breaking capacity 10kA \u0026 C characteristics on din rail of existing DBs and necessary connection",
+              "GS": "PWD/GS -D-6:7"
+            }
+          ],
+          "Accessories": [
+            {}
+          ]
+        },
+        {
+          "UniqueID": "2eeec93f-2eaf-46d3-a957-604819919a51",
+          "Name": "AC Point",
+          "Position": {
+            "IsEmpty": false,
+            "X": 533,
+            "Y": 1215
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 80,
+            "Height": 60
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 40,
+              "Y": 0
+            }
+          },
+          "Properties": [
+            {
+              "Power": "2200 W",
+              "Description": "AC Point",
+              "Type": "Appliance",
+              "Phase": "R"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/split-ac.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": []
+        },
+        {
+          "UniqueID": "fbc0fe9d-c704-402b-b13b-6eda72066f8e",
+          "Name": "AC Point",
+          "Position": {
+            "IsEmpty": false,
+            "X": 957,
+            "Y": 1192
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 80,
+            "Height": 60
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 40,
+              "Y": 0
+            }
+          },
+          "Properties": [
+            {
+              "Power": "2200 W",
+              "Description": "AC Point",
+              "Type": "Appliance",
+              "Phase": "Y"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/split-ac.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": []
+        },
+        {
+          "UniqueID": "e675f70f-50b2-4c09-8937-cfd975a15a38",
+          "Name": "AC Point",
+          "Position": {
+            "IsEmpty": false,
+            "X": 1585,
+            "Y": 1190
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 80,
+            "Height": 60
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 40,
+              "Y": 0
+            }
+          },
+          "Properties": [
+            {
+              "Power": "2200 W",
+              "Description": "AC Point",
+              "Type": "Appliance",
+              "Phase": "B"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/split-ac.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": []
+        },
+        {
+          "UniqueID": "f1a770c7-b1cc-4c37-bb43-734d25d2d67b",
+          "Name": "Geyser Point",
+          "Position": {
+            "IsEmpty": false,
+            "X": 407,
+            "Y": 1217
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 60,
+            "Height": 60
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 0
+            }
+          },
+          "Properties": [
+            {
+              "Power": "1200 W",
+              "Description": "Geyser Point",
+              "Type": "Appliance",
+              "Phase": "R"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/geyser.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": []
+        },
+        {
+          "UniqueID": "acf7dc57-b2f0-4ab8-ad19-e362f49a7510",
+          "Name": "Geyser Point",
+          "Position": {
+            "IsEmpty": false,
+            "X": 1358,
+            "Y": 1158
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 60,
+            "Height": 60
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 0
+            }
+          },
+          "Properties": [
+            {
+              "Power": "1200 W",
+              "Description": "Geyser Point",
+              "Type": "Appliance",
+              "Phase": "B"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/geyser.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": []
+        },
+        {
+          "UniqueID": "e28926d6-b2e5-42ee-a572-0ddadd72ecdc",
+          "Name": "Main Switch",
+          "Position": {
+            "IsEmpty": false,
+            "X": 750,
+            "Y": 1290
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 100,
+            "Height": 100
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 0
+            },
+            "out": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 100
+            }
+          },
+          "Properties": [
+            {
+              "Type": "TPN SFU",
+              "Enclosure": "Sheet steel enclosure",
+              "Mounting ": "Flat Iron frame",
+              "Current Rating": "32A",
+              "Voltage": "415V - TPN",
+              "Company": "Siemens",
+              "Rate": "3904",
+              "Description": "Supplying and fixing following TPN SFU with sheet steel enclosure on flat iron frame on wall with nuts bolts etc incl. S \u0026 F 3 nos. DIN type HRC fuse as per rating",
+              "GS": "PWD/GS -D-3 : 4(a)",
+              "Way": "4"
+            }
+          ],
+          "AlternativeCompany1": "Siemens",
+          "AlternativeCompany2": "L\u0026T",
+          "SvgContent": null,
+          "IconPath": "/icons/main switch.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": [
+            {
+              "endbox_required": "false",
+              "number_of_endbox": "2"
+            }
+          ]
+        },
+        {
+          "UniqueID": "f1ed5352-7270-4a14-9bdd-32114df68a69",
+          "Name": "Bulb",
+          "Position": {
+            "IsEmpty": false,
+            "X": 584,
+            "Y": 1509
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 60,
+            "Height": 60
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 0
+            }
+          },
+          "Properties": [
+            {
+              "Power": "12 W",
+              "Description": "Bulb",
+              "Type": "Lighting",
+              "Phase": "ALL"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/bulb.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": []
+        },
+        {
+          "UniqueID": "163ff2e3-43e1-4a26-b58b-b86bceb851c2",
+          "Name": "Point Switch Board",
+          "Position": {
+            "IsEmpty": false,
+            "X": -2035,
+            "Y": 1504
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 100,
+            "Height": 100
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 0
+            },
+            "out1": {
+              "IsEmpty": false,
+              "X": 5,
+              "Y": 35
+            },
+            "out2": {
+              "IsEmpty": false,
+              "X": 5,
+              "Y": 65
+            },
+            "out3": {
+              "IsEmpty": false,
+              "X": 10,
+              "Y": 95
+            },
+            "out4": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 95
+            },
+            "out5": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 95
+            },
+            "out6": {
+              "IsEmpty": false,
+              "X": 70,
+              "Y": 95
+            },
+            "out7": {
+              "IsEmpty": false,
+              "X": 90,
+              "Y": 95
+            },
+            "out8": {
+              "IsEmpty": false,
+              "X": 95,
+              "Y": 65
+            },
+            "out9": {
+              "IsEmpty": false,
+              "X": 95,
+              "Y": 35
+            }
+          },
+          "Properties": [
+            {
+              "Type": "Flush / Piano key",
+              "Using": "Polythen pipe",
+              "Wiring": "Embedded in wall",
+              "Avg. Run": "Average run 6 mtr",
+              "Rate": "780",
+              "Description": "Distn. wiring in 22/0.3 (1.5 sqmm) single core stranded \u0027FR\u0027 PVC insulated \u0026 unsheathed single core stranded copper wire (Brand approved by EIC) in 19 mm bore, 3 mm thick polythen pipe complete with all accessories embedded in wall to light/fan/call bell points with Piano key type switch (Anchor make) fixed on sheet metal (16 SWG) switch board with bakelite/perspex (wall matching colour) top cover (3 mm thick) flushed in wall incl. mending good damages to original finish - 2x22/0.3 (Ph. \u0026 N) and 1x22/0.3 as ECC",
+              "GS": "PWD/GS -E-9 : 2 (a)(i)",
+              "Way": "4"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/point_switch_board.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": [
+            {
+              "orboard_required": "false",
+              "number_of_onboard": "1"
+            }
+          ]
+        },
+        {
+          "UniqueID": "8567e779-1d5f-4465-9959-69a844dda80e",
+          "Name": "Point Switch Board",
+          "Position": {
+            "IsEmpty": false,
+            "X": -1739,
+            "Y": 1505
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 100,
+            "Height": 100
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 0
+            },
+            "out1": {
+              "IsEmpty": false,
+              "X": 5,
+              "Y": 35
+            },
+            "out2": {
+              "IsEmpty": false,
+              "X": 5,
+              "Y": 65
+            },
+            "out3": {
+              "IsEmpty": false,
+              "X": 10,
+              "Y": 95
+            },
+            "out4": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 95
+            },
+            "out5": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 95
+            },
+            "out6": {
+              "IsEmpty": false,
+              "X": 70,
+              "Y": 95
+            },
+            "out7": {
+              "IsEmpty": false,
+              "X": 90,
+              "Y": 95
+            },
+            "out8": {
+              "IsEmpty": false,
+              "X": 95,
+              "Y": 65
+            },
+            "out9": {
+              "IsEmpty": false,
+              "X": 95,
+              "Y": 35
+            }
+          },
+          "Properties": [
+            {
+              "Type": "Flush / Piano key",
+              "Using": "Polythen pipe",
+              "Wiring": "Embedded in wall",
+              "Avg. Run": "Average run 6 mtr",
+              "Rate": "780",
+              "Description": "Distn. wiring in 22/0.3 (1.5 sqmm) single core stranded \u0027FR\u0027 PVC insulated \u0026 unsheathed single core stranded copper wire (Brand approved by EIC) in 19 mm bore, 3 mm thick polythen pipe complete with all accessories embedded in wall to light/fan/call bell points with Piano key type switch (Anchor make) fixed on sheet metal (16 SWG) switch board with bakelite/perspex (wall matching colour) top cover (3 mm thick) flushed in wall incl. mending good damages to original finish - 2x22/0.3 (Ph. \u0026 N) and 1x22/0.3 as ECC",
+              "GS": "PWD/GS -E-9 : 2 (a)(i)",
+              "Way": "4"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/point_switch_board.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": [
+            {
+              "orboard_required": "false",
+              "number_of_onboard": "1"
+            }
+          ]
+        },
+        {
+          "UniqueID": "67b877cf-6ed3-4aa0-8f61-be7370b822ed",
+          "Name": "Point Switch Board",
+          "Position": {
+            "IsEmpty": false,
+            "X": -1379,
+            "Y": 1508
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 100,
+            "Height": 100
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 0
+            },
+            "out1": {
+              "IsEmpty": false,
+              "X": 5,
+              "Y": 35
+            },
+            "out2": {
+              "IsEmpty": false,
+              "X": 5,
+              "Y": 65
+            },
+            "out3": {
+              "IsEmpty": false,
+              "X": 10,
+              "Y": 95
+            },
+            "out4": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 95
+            },
+            "out5": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 95
+            },
+            "out6": {
+              "IsEmpty": false,
+              "X": 70,
+              "Y": 95
+            },
+            "out7": {
+              "IsEmpty": false,
+              "X": 90,
+              "Y": 95
+            },
+            "out8": {
+              "IsEmpty": false,
+              "X": 95,
+              "Y": 65
+            },
+            "out9": {
+              "IsEmpty": false,
+              "X": 95,
+              "Y": 35
+            }
+          },
+          "Properties": [
+            {
+              "Type": "Flush / Piano key",
+              "Using": "Polythen pipe",
+              "Wiring": "Embedded in wall",
+              "Avg. Run": "Average run 6 mtr",
+              "Rate": "780",
+              "Description": "Distn. wiring in 22/0.3 (1.5 sqmm) single core stranded \u0027FR\u0027 PVC insulated \u0026 unsheathed single core stranded copper wire (Brand approved by EIC) in 19 mm bore, 3 mm thick polythen pipe complete with all accessories embedded in wall to light/fan/call bell points with Piano key type switch (Anchor make) fixed on sheet metal (16 SWG) switch board with bakelite/perspex (wall matching colour) top cover (3 mm thick) flushed in wall incl. mending good damages to original finish - 2x22/0.3 (Ph. \u0026 N) and 1x22/0.3 as ECC",
+              "GS": "PWD/GS -E-9 : 2 (a)(i)",
+              "Way": "4"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/point_switch_board.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": [
+            {
+              "orboard_required": "false",
+              "number_of_onboard": "1"
+            }
+          ]
+        },
+        {
+          "UniqueID": "30ac2882-43de-4012-bc5c-08d9e56eadd1",
+          "Name": "Point Switch Board",
+          "Position": {
+            "IsEmpty": false,
+            "X": -1068,
+            "Y": 1505
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 100,
+            "Height": 100
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 0
+            },
+            "out1": {
+              "IsEmpty": false,
+              "X": 5,
+              "Y": 35
+            },
+            "out2": {
+              "IsEmpty": false,
+              "X": 5,
+              "Y": 65
+            },
+            "out3": {
+              "IsEmpty": false,
+              "X": 10,
+              "Y": 95
+            },
+            "out4": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 95
+            },
+            "out5": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 95
+            },
+            "out6": {
+              "IsEmpty": false,
+              "X": 70,
+              "Y": 95
+            },
+            "out7": {
+              "IsEmpty": false,
+              "X": 90,
+              "Y": 95
+            },
+            "out8": {
+              "IsEmpty": false,
+              "X": 95,
+              "Y": 65
+            },
+            "out9": {
+              "IsEmpty": false,
+              "X": 95,
+              "Y": 35
+            }
+          },
+          "Properties": [
+            {
+              "Type": "Flush / Piano key",
+              "Using": "Polythen pipe",
+              "Wiring": "Embedded in wall",
+              "Avg. Run": "Average run 6 mtr",
+              "Rate": "780",
+              "Description": "Distn. wiring in 22/0.3 (1.5 sqmm) single core stranded \u0027FR\u0027 PVC insulated \u0026 unsheathed single core stranded copper wire (Brand approved by EIC) in 19 mm bore, 3 mm thick polythen pipe complete with all accessories embedded in wall to light/fan/call bell points with Piano key type switch (Anchor make) fixed on sheet metal (16 SWG) switch board with bakelite/perspex (wall matching colour) top cover (3 mm thick) flushed in wall incl. mending good damages to original finish - 2x22/0.3 (Ph. \u0026 N) and 1x22/0.3 as ECC",
+              "GS": "PWD/GS -E-9 : 2 (a)(i)",
+              "Way": "4"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/point_switch_board.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": [
+            {
+              "orboard_required": "false",
+              "number_of_onboard": "1"
+            }
+          ]
+        },
+        {
+          "UniqueID": "4c243b56-e96b-46fa-9cd9-46d08ac7d10b",
+          "Name": "Point Switch Board",
+          "Position": {
+            "IsEmpty": false,
+            "X": -2464,
+            "Y": 1500
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 100,
+            "Height": 100
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 0
+            },
+            "out1": {
+              "IsEmpty": false,
+              "X": 5,
+              "Y": 35
+            },
+            "out2": {
+              "IsEmpty": false,
+              "X": 5,
+              "Y": 65
+            },
+            "out3": {
+              "IsEmpty": false,
+              "X": 10,
+              "Y": 95
+            },
+            "out4": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 95
+            },
+            "out5": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 95
+            },
+            "out6": {
+              "IsEmpty": false,
+              "X": 70,
+              "Y": 95
+            },
+            "out7": {
+              "IsEmpty": false,
+              "X": 90,
+              "Y": 95
+            },
+            "out8": {
+              "IsEmpty": false,
+              "X": 95,
+              "Y": 65
+            },
+            "out9": {
+              "IsEmpty": false,
+              "X": 95,
+              "Y": 35
+            }
+          },
+          "Properties": [
+            {
+              "Type": "Flush / Piano key",
+              "Using": "Polythen pipe",
+              "Wiring": "Embedded in wall",
+              "Avg. Run": "Average run 6 mtr",
+              "Rate": "780",
+              "Description": "Distn. wiring in 22/0.3 (1.5 sqmm) single core stranded \u0027FR\u0027 PVC insulated \u0026 unsheathed single core stranded copper wire (Brand approved by EIC) in 19 mm bore, 3 mm thick polythen pipe complete with all accessories embedded in wall to light/fan/call bell points with Piano key type switch (Anchor make) fixed on sheet metal (16 SWG) switch board with bakelite/perspex (wall matching colour) top cover (3 mm thick) flushed in wall incl. mending good damages to original finish - 2x22/0.3 (Ph. \u0026 N) and 1x22/0.3 as ECC",
+              "GS": "PWD/GS -E-9 : 2 (a)(i)",
+              "Way": "4"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/point_switch_board.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": [
+            {
+              "orboard_required": "false",
+              "number_of_onboard": "1"
+            }
+          ]
+        },
+        {
+          "UniqueID": "b3cccc89-fcc3-4f61-9b84-77036eab7da4",
+          "Name": "Point Switch Board",
+          "Position": {
+            "IsEmpty": false,
+            "X": -2830,
+            "Y": 1506
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 100,
+            "Height": 100
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 0
+            },
+            "out1": {
+              "IsEmpty": false,
+              "X": 5,
+              "Y": 35
+            },
+            "out2": {
+              "IsEmpty": false,
+              "X": 5,
+              "Y": 65
+            },
+            "out3": {
+              "IsEmpty": false,
+              "X": 10,
+              "Y": 95
+            },
+            "out4": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 95
+            },
+            "out5": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 95
+            },
+            "out6": {
+              "IsEmpty": false,
+              "X": 70,
+              "Y": 95
+            },
+            "out7": {
+              "IsEmpty": false,
+              "X": 90,
+              "Y": 95
+            },
+            "out8": {
+              "IsEmpty": false,
+              "X": 95,
+              "Y": 65
+            },
+            "out9": {
+              "IsEmpty": false,
+              "X": 95,
+              "Y": 35
+            }
+          },
+          "Properties": [
+            {
+              "Type": "Flush / Piano key",
+              "Using": "Polythen pipe",
+              "Wiring": "Embedded in wall",
+              "Avg. Run": "Average run 6 mtr",
+              "Rate": "780",
+              "Description": "Distn. wiring in 22/0.3 (1.5 sqmm) single core stranded \u0027FR\u0027 PVC insulated \u0026 unsheathed single core stranded copper wire (Brand approved by EIC) in 19 mm bore, 3 mm thick polythen pipe complete with all accessories embedded in wall to light/fan/call bell points with Piano key type switch (Anchor make) fixed on sheet metal (16 SWG) switch board with bakelite/perspex (wall matching colour) top cover (3 mm thick) flushed in wall incl. mending good damages to original finish - 2x22/0.3 (Ph. \u0026 N) and 1x22/0.3 as ECC",
+              "GS": "PWD/GS -E-9 : 2 (a)(i)",
+              "Way": "4"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/point_switch_board.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": [
+            {
+              "orboard_required": "false",
+              "number_of_onboard": "1"
+            }
+          ]
+        },
+        {
+          "UniqueID": "8758ea2f-94ab-4f8c-ae1a-bd1b381cb47f",
+          "Name": "Avg. 5A Switch Board",
+          "Position": {
+            "IsEmpty": false,
+            "X": -692,
+            "Y": 1525
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 100,
+            "Height": 100
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 0
+            }
+          },
+          "Properties": [
+            {
+              "Power": "150 W",
+              "Type": "Flush / Piano key",
+              "Using": "Polythen pipe",
+              "Wiring": "Embedded in wall",
+              "Avg. Run": "Average run 1.5 mtr",
+              "Rate": "379",
+              "Description": "Distn. wiring in 22/0.3 (1.5 sqmm) single core stranded \u0027FR\u0027 PVC insulated \u0026 unsheathed single core stranded copper wire (Brand approved by EIC) in 19 mm bore, 3 mm thick polythen pipe complete with all accessories embedded in wall to 240 V 5A 3 pin plug point incl. S\u0026F 240 V 5A 3 pin flush type plug socket \u0026 piano key type switch (Anchor make) incl. S\u0026F earth continuity wire, fixed on sheet metal (16 SWG) switch board with bakelite/perspex (wall matching colour) top cover (3 mm thick) flushed in wall incl. mending good damages to original finish - 2x22/0.3 (Ph. \u0026 N) and 1x22/0.3 as ECC",
+              "GS": "PWD/GS -E-10 : 4 (a)(ii)",
+              "Way": "4",
+              "Phase": "R"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/avg_5a_switch_board.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": []
+        },
+        {
+          "UniqueID": "6d737a69-9423-400f-9d2c-6c1258432af4",
+          "Name": "Avg. 5A Switch Board",
+          "Position": {
+            "IsEmpty": false,
+            "X": -481,
+            "Y": 1525
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 100,
+            "Height": 100
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 50,
+              "Y": 0
+            }
+          },
+          "Properties": [
+            {
+              "Power": "150 W",
+              "Type": "Flush / Piano key",
+              "Using": "Polythen pipe",
+              "Wiring": "Embedded in wall",
+              "Avg. Run": "Average run 1.5 mtr",
+              "Rate": "379",
+              "Description": "Distn. wiring in 22/0.3 (1.5 sqmm) single core stranded \u0027FR\u0027 PVC insulated \u0026 unsheathed single core stranded copper wire (Brand approved by EIC) in 19 mm bore, 3 mm thick polythen pipe complete with all accessories embedded in wall to 240 V 5A 3 pin plug point incl. S\u0026F 240 V 5A 3 pin flush type plug socket \u0026 piano key type switch (Anchor make) incl. S\u0026F earth continuity wire, fixed on sheet metal (16 SWG) switch board with bakelite/perspex (wall matching colour) top cover (3 mm thick) flushed in wall incl. mending good damages to original finish - 2x22/0.3 (Ph. \u0026 N) and 1x22/0.3 as ECC",
+              "GS": "PWD/GS -E-10 : 4 (a)(ii)",
+              "Way": "4",
+              "Phase": "R"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/avg_5a_switch_board.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": []
+        },
+        {
+          "UniqueID": "85090bf1-18df-4c64-950e-86da64dc22ee",
+          "Name": "Bulb",
+          "Position": {
+            "IsEmpty": false,
+            "X": -3513,
+            "Y": 1805
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 60,
+            "Height": 60
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 0
+            }
+          },
+          "Properties": [
+            {
+              "Power": "12 W",
+              "Description": "Bulb",
+              "Type": "Lighting",
+              "Phase": "R"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/bulb.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": []
+        },
+        {
+          "UniqueID": "e6dc8233-3789-4fc7-938f-795c8cd2f85f",
+          "Name": "Tube Light",
+          "Position": {
+            "IsEmpty": false,
+            "X": -3286,
+            "Y": 2012
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 80,
+            "Height": 48
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 40,
+              "Y": 0
+            }
+          },
+          "Properties": [
+            {
+              "Power": "18 W",
+              "Description": "Tube Light",
+              "Type": "Lighting",
+              "Phase": "R"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/tube-light.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": []
+        },
+        {
+          "UniqueID": "9e388b7b-2c9f-445e-81b1-34a4f06dc514",
+          "Name": "Ceiling Fan",
+          "Position": {
+            "IsEmpty": false,
+            "X": -3068,
+            "Y": 2034
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 60,
+            "Height": 60
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 0
+            }
+          },
+          "Properties": [
+            {
+              "Power": "80 W",
+              "Description": "Ceiling Fan",
+              "Type": "Appliance",
+              "Phase": "R"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/ceiling-fan.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": []
+        },
+        {
+          "UniqueID": "ce8c5594-2e58-4aa6-ba16-64daae5a5e1a",
+          "Name": "Exhaust Fan",
+          "Position": {
+            "IsEmpty": false,
+            "X": -2804,
+            "Y": 2039
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 60,
+            "Height": 60
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 0
+            }
+          },
+          "Properties": [
+            {
+              "Power": "60 W",
+              "Description": "Exhaust Fan",
+              "Type": "Appliance",
+              "Phase": "R"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/exhaust-fan.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": []
+        },
+        {
+          "UniqueID": "9ea041b9-1e7d-4950-a094-6b5245031d61",
+          "Name": "Ceiling Fan",
+          "Position": {
+            "IsEmpty": false,
+            "X": -2558,
+            "Y": 2042
+          },
+          "Size": {
+            "IsEmpty": false,
+            "Width": 60,
+            "Height": 60
+          },
+          "ConnectionPoints": {
+            "in": {
+              "IsEmpty": false,
+              "X": 30,
+              "Y": 0
+            }
+          },
+          "Properties": [
+            {
+              "Power": "80 W",
+              "Description": "Ceiling Fan",
+              "Type": "Appliance",
+              "Phase": "R"
+            }
+          ],
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "SvgContent": null,
+          "IconPath": "/icons/ceiling-fan.svg",
+          "Rotation": 0,
+          "Locked": false,
+          "IdPoints": {},
+          "Incomer": {},
+          "Outgoing": [],
+          "Accessories": []
+        }
+      ],
+      "StoredConnectors": [
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "7175d5a5-18ab-45c3-8f23-94abf28f5fbc",
+          "TargetItemId": "4e2c36e3-7f50-42d5-8fc4-a5f934857f26",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "4 Core",
+            "Size": "6 sq.mm.",
+            "Company": "KEI",
+            "Rate": "245",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "4e2c36e3-7f50-42d5-8fc4-a5f934857f26",
+          "TargetItemId": "ce622bbd-21cb-43ba-ab79-e22ba9a69152",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out1_ALL",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "ce622bbd-21cb-43ba-ab79-e22ba9a69152",
+          "TargetItemId": "72f0c0e7-e354-41ec-969c-3d0664c02b12",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "4 Core",
+            "Size": "6 sq.mm.",
+            "Company": "KEI",
+            "Rate": "245",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out1_Red Phase",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "72f0c0e7-e354-41ec-969c-3d0664c02b12",
+          "TargetItemId": "7508bc1a-d3a2-45ff-8d93-b3d57dee36eb",
+          "Properties": {
+            "Conduit": "Prelaid",
+            "Conduit size": "Any",
+            "Conductor Size": "2 x 4 \u002B 1 x 2.5 sq.mm",
+            "Rate": "95",
+            "Description": "Supplying and Drawing 1.1 KV single core stranded \u0027FR\u0027\nPVC insulated \u0026 unsheathed single core stranded copper wire\n(Brand approved by EIC) of the following sizes in the prelaid\npolythene pipe and by the prelaid GI fish wire and making\nnecy. connection as required",
+            "GS": "PWD/GS -E-9 : 1"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Wiring",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out4_Blue Phase",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "72f0c0e7-e354-41ec-969c-3d0664c02b12",
+          "TargetItemId": "e675f70f-50b2-4c09-8937-cfd975a15a38",
+          "Properties": {
+            "Conduit": "Prelaid",
+            "Conduit size": "Any",
+            "Conductor Size": "2 x 2.5 \u002B 1 x 1.5 sq.mm",
+            "Rate": "65",
+            "Description": "Supplying and Drawing 1.1 KV single core stranded \u0027FR\u0027\nPVC insulated \u0026 unsheathed single core stranded copper wire\n(Brand approved by EIC) of the following sizes in the prelaid\npolythene pipe and by the prelaid GI fish wire and making\nnecy. connection as required",
+            "GS": "PWD/GS -E-9 : 1"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Wiring",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out4_Yellow Phase",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "72f0c0e7-e354-41ec-969c-3d0664c02b12",
+          "TargetItemId": "fbc0fe9d-c704-402b-b13b-6eda72066f8e",
+          "Properties": {
+            "Conduit": "Prelaid",
+            "Conduit size": "Any",
+            "Conductor Size": "2 x 2.5 \u002B 1 x 1.5 sq.mm",
+            "Rate": "65",
+            "Description": "Supplying and Drawing 1.1 KV single core stranded \u0027FR\u0027\nPVC insulated \u0026 unsheathed single core stranded copper wire\n(Brand approved by EIC) of the following sizes in the prelaid\npolythene pipe and by the prelaid GI fish wire and making\nnecy. connection as required",
+            "GS": "PWD/GS -E-9 : 1"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Wiring",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out4_Red Phase",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "72f0c0e7-e354-41ec-969c-3d0664c02b12",
+          "TargetItemId": "2eeec93f-2eaf-46d3-a957-604819919a51",
+          "Properties": {
+            "Conduit": "Prelaid",
+            "Conduit size": "Any",
+            "Conductor Size": "2 x 2.5 \u002B 1 x 1.5 sq.mm",
+            "Rate": "65",
+            "Description": "Supplying and Drawing 1.1 KV single core stranded \u0027FR\u0027\nPVC insulated \u0026 unsheathed single core stranded copper wire\n(Brand approved by EIC) of the following sizes in the prelaid\npolythene pipe and by the prelaid GI fish wire and making\nnecy. connection as required",
+            "GS": "PWD/GS -E-9 : 1"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Wiring",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out2_Red Phase",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "72f0c0e7-e354-41ec-969c-3d0664c02b12",
+          "TargetItemId": "f1a770c7-b1cc-4c37-bb43-734d25d2d67b",
+          "Properties": {
+            "Conduit": "Prelaid",
+            "Conduit size": "Any",
+            "Conductor Size": "2 x 2.5 \u002B 1 x 1.5 sq.mm",
+            "Rate": "65",
+            "Description": "Supplying and Drawing 1.1 KV single core stranded \u0027FR\u0027\nPVC insulated \u0026 unsheathed single core stranded copper wire\n(Brand approved by EIC) of the following sizes in the prelaid\npolythene pipe and by the prelaid GI fish wire and making\nnecy. connection as required",
+            "GS": "PWD/GS -E-9 : 1"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Wiring",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out3_Blue Phase",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "72f0c0e7-e354-41ec-969c-3d0664c02b12",
+          "TargetItemId": "acf7dc57-b2f0-4ab8-ad19-e362f49a7510",
+          "Properties": {
+            "Conduit": "Prelaid",
+            "Conduit size": "Any",
+            "Conductor Size": "2 x 2.5 \u002B 1 x 1.5 sq.mm",
+            "Rate": "65",
+            "Description": "Supplying and Drawing 1.1 KV single core stranded \u0027FR\u0027\nPVC insulated \u0026 unsheathed single core stranded copper wire\n(Brand approved by EIC) of the following sizes in the prelaid\npolythene pipe and by the prelaid GI fish wire and making\nnecy. connection as required",
+            "GS": "PWD/GS -E-9 : 1"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "",
+          "AlternativeCompany2": "",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Wiring",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out1_Yellow Phase",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "72f0c0e7-e354-41ec-969c-3d0664c02b12",
+          "TargetItemId": "e28926d6-b2e5-42ee-a572-0ddadd72ecdc",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "4 Core",
+            "Size": "6 sq.mm.",
+            "Company": "KEI",
+            "Rate": "245",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "e28926d6-b2e5-42ee-a572-0ddadd72ecdc",
+          "TargetItemId": "f1ed5352-7270-4a14-9bdd-32114df68a69",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out1",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "7508bc1a-d3a2-45ff-8d93-b3d57dee36eb",
+          "TargetItemId": "b3cccc89-fcc3-4f61-9b84-77036eab7da4",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out2",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "7508bc1a-d3a2-45ff-8d93-b3d57dee36eb",
+          "TargetItemId": "4c243b56-e96b-46fa-9cd9-46d08ac7d10b",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out3",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "7508bc1a-d3a2-45ff-8d93-b3d57dee36eb",
+          "TargetItemId": "163ff2e3-43e1-4a26-b58b-b86bceb851c2",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out4",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "7508bc1a-d3a2-45ff-8d93-b3d57dee36eb",
+          "TargetItemId": "8567e779-1d5f-4465-9959-69a844dda80e",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out5",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "7508bc1a-d3a2-45ff-8d93-b3d57dee36eb",
+          "TargetItemId": "67b877cf-6ed3-4aa0-8f61-be7370b822ed",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out6",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "7508bc1a-d3a2-45ff-8d93-b3d57dee36eb",
+          "TargetItemId": "30ac2882-43de-4012-bc5c-08d9e56eadd1",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out7",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "7508bc1a-d3a2-45ff-8d93-b3d57dee36eb",
+          "TargetItemId": "8758ea2f-94ab-4f8c-ae1a-bd1b381cb47f",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out8",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "7508bc1a-d3a2-45ff-8d93-b3d57dee36eb",
+          "TargetItemId": "6d737a69-9423-400f-9d2c-6c1258432af4",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out1",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "b3cccc89-fcc3-4f61-9b84-77036eab7da4",
+          "TargetItemId": "85090bf1-18df-4c64-950e-86da64dc22ee",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out2",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "b3cccc89-fcc3-4f61-9b84-77036eab7da4",
+          "TargetItemId": "e6dc8233-3789-4fc7-938f-795c8cd2f85f",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out3",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "b3cccc89-fcc3-4f61-9b84-77036eab7da4",
+          "TargetItemId": "9e388b7b-2c9f-445e-81b1-34a4f06dc514",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out4",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "b3cccc89-fcc3-4f61-9b84-77036eab7da4",
+          "TargetItemId": "ce8c5594-2e58-4aa6-ba16-64daae5a5e1a",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        },
+        {
+          "SourceItem": null,
+          "SourcePointKey": "out5",
+          "TargetItem": null,
+          "TargetPointKey": "in",
+          "SourceItemId": "b3cccc89-fcc3-4f61-9b84-77036eab7da4",
+          "TargetItemId": "9ea041b9-1e7d-4950-a094-6b5245031d61",
+          "Properties": {
+            "Conductor": "Aluminium",
+            "Armoured": "Armoured",
+            "Core": "2 Core",
+            "Size": "4 sq.mm.",
+            "Company": "KEI",
+            "Rate": "169",
+            "Description": "Supplying and Delivery following core and size of 1.1 KV Aluminium Armoured PVC/XLPE Cables",
+            "GS": "PRICE LIST : 01-01-2025"
+          },
+          "CurrentValues": {
+            "Current": "0 A",
+            "R_Current": "0 A",
+            "Y_Current": "0 A",
+            "B_Current": "0 A",
+            "Phase": "0 A"
+          },
+          "AlternativeCompany1": "KEI",
+          "AlternativeCompany2": "Polycab",
+          "Laying": {
+            "Method": "On Wall / surface with Saddles / clamps",
+            "Size": "upto 25 sq.mm.",
+            "Core": "2 Core",
+            "Rate": "57",
+            "Description": "Laying of cable upto 2 core 25 sqmm on wall/surface incl. S \u0026 F\nMS saddles with earthing attachment in 10 SWG GI (Hot Dip)\nWire, making holes etc. as necy. mending good damages and\npainting",
+            "GS": "PWD/GS -F-1:2 (a)"
+          },
+          "Accessories": [],
+          "Length": 0,
+          "MaterialType": "Cable",
+          "IsVirtual": false
+        }
+      ],
+      "ExistingLinePoints": [],
+      "ExistingConnections": [],
+      "Scale": 0.161051,
+      "ViewportX": 1264.7725124427377,
+      "ViewportY": 38.30687532914317
+    }
+  ]
+}

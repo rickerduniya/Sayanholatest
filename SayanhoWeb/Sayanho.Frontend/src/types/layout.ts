@@ -237,7 +237,8 @@ export type DrawingTool =
     | 'stair'
     | 'component'
     | 'connection'
-    | 'erase';
+    | 'erase'
+    | 'pick';
 
 export interface DrawingState {
     activeTool: DrawingTool;
@@ -246,7 +247,10 @@ export interface DrawingState {
     currentPath: Point[];
     selectedElementIds: string[];
     gridSnap: boolean;
-    gridSize: number;           // pixels
+    gridSize: number;           // pixels (Legacy)
+    gridSpacingMeters: number;  // Meters (New standard)
+    wallThickness: number;      // pixels
+    continuousWallMode: boolean;// true for chain, false for single segment
 }
 
 // ============================================================================

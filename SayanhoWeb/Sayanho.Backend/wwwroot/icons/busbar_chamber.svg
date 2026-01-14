@@ -1,0 +1,36 @@
+<svg width="360" height="150" xmlns="http://www.w3.org/2000/svg">
+  <!-- Chamber Box -->
+  <rect x="5" y="5" width="350" height="140" rx="5" fill="#f0f0f0" stroke="#333" stroke-width="2"/>
+  
+  <!-- Busbars -->
+  <line x1="15" y1="40" x2="345" y2="40" stroke="#d4af37" stroke-width="4"/> <!-- R -->
+  <line x1="15" y1="60" x2="345" y2="60" stroke="#d4af37" stroke-width="4"/> <!-- Y -->
+  <line x1="15" y1="80" x2="345" y2="80" stroke="#d4af37" stroke-width="4"/> <!-- B -->
+  <line x1="15" y1="100" x2="345" y2="100" stroke="#333" stroke-width="4"/>    <!-- N -->
+
+  <!-- Label -->
+  <text x="180" y="25" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold">Busbar Chamber (1m)</text>
+
+  <!-- Connection Points -->
+  <!-- In -->
+  <circle cx="180" cy="5" r="4" fill="blue"/>
+  
+  <!-- Outs -->
+  <circle cx="30" cy="145" r="4" fill="green"/>
+  <text x="30" y="135" text-anchor="middle" font-size="10">O1</text>
+  
+  <circle cx="90" cy="145" r="4" fill="green"/>
+  <text x="90" y="135" text-anchor="middle" font-size="10">O2</text>
+  
+  <circle cx="150" cy="145" r="4" fill="green"/>
+  <text x="150" y="135" text-anchor="middle" font-size="10">O3</text>
+  
+  <circle cx="210" cy="145" r="4" fill="green"/>
+  <text x="210" y="135" text-anchor="middle" font-size="10">O4</text>
+  
+  <circle cx="270" cy="145" r="4" fill="green"/>
+  <text x="270" y="135" text-anchor="middle" font-size="10">O5</text>
+  
+  <circle cx="330" cy="145" r="4" fill="green"/>
+  <text x="330" y="135" text-anchor="middle" font-size="10">O6</text>
+</svg>

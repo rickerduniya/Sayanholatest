@@ -612,7 +612,42 @@ function processDetectionResult(result: ApiResponseImage): DetectedLayout {
         if (cls.name === 'door') {
             const size = Math.max(width, height);
 
-            const rotation = snappedAngleDeg ?? (width > height ? 0 : 90);
+            // Intrinsic orientation based on bounding box aspect ratio
+            const isHorizontal = width > height;
+            // Prefer 0 (Horizontal) or 90 (Vertical)
+            const intrinsicAngle = isHorizontal ? 0 : 90;
+
+            // Filter walls to only snap to those that roughly match the door's intrinsic orientation.
+            // A wall is "compatible" if it is also roughly horizontal or vertical matching the door.
+            // We'll use a lenient tolerance (e.g. 30 degrees) to account for slight skews.
+            const compatibleWalls = walls.filter(w => {
+                const dx = w.endPoint.x - w.startPoint.x;
+                const dy = w.endPoint.y - w.startPoint.y;
+                const angleRad = Math.atan2(dy, dx);
+                const angleDeg = (angleRad * 180) / Math.PI;
+
+                // Normalize to 0-180 for simpler comparison with 0 (H) or 90 (V)
+                let normAngle = Math.abs(angleDeg % 180);
+                if (normAngle > 90) normAngle = 180 - normAngle;
+                // Now normAngle is 0..90.
+                // If door is Horizontal (0), we want normAngle close to 0.
+                // If door is Vertical (90), we want normAngle close to 90.
+
+                if (isHorizontal) {
+                    return normAngle < 30; // Close to horizontal
+                } else {
+                    return normAngle > 60; // Close to vertical
+                }
+            });
+
+            // Snap only to compatible walls
+            const snap = snapToWall(center, compatibleWalls, 200);
+            const snappedWall = snap ? snap.wall : null;
+
+            // If snapped, use the wall's angle. If not, use intrinsic angle.
+            const rotation = snappedWall
+                ? (Math.atan2(snappedWall.endPoint.y - snappedWall.startPoint.y, snappedWall.endPoint.x - snappedWall.startPoint.x) * 180) / Math.PI
+                : intrinsicAngle;
 
             doors.push({
                 id: generateLayoutId('door'),

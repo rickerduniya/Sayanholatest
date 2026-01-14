@@ -69,6 +69,9 @@ interface LayoutStoreState {
     setSelectedComponentType: (type: LayoutComponentType | undefined) => void;
     setGridSnap: (enabled: boolean) => void;
     setGridSize: (size: number) => void;
+    setGridSpacingMeters: (meters: number) => void;
+    setWallThickness: (thickness: number) => void;
+    setContinuousWallMode: (enabled: boolean) => void;
 
     // Wall actions
     addWall: (wall: Omit<Wall, 'id'>) => void;
@@ -170,7 +173,10 @@ const createDefaultDrawingState = (): DrawingState => ({
     currentPath: [],
     selectedElementIds: [],
     gridSnap: true,
-    gridSize: 20
+    gridSize: 20,
+    gridSpacingMeters: 0.5,
+    wallThickness: 10,
+    continuousWallMode: false // Default to single line as requested
 });
 
 // Helper to find current floor plan from state
@@ -250,6 +256,18 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
 
     setGridSize: (size) => set((state) => ({
         drawingState: { ...state.drawingState, gridSize: size }
+    })),
+
+    setGridSpacingMeters: (meters) => set((state) => ({
+        drawingState: { ...state.drawingState, gridSpacingMeters: meters }
+    })),
+
+    setWallThickness: (thickness) => set((state) => ({
+        drawingState: { ...state.drawingState, wallThickness: thickness }
+    })),
+
+    setContinuousWallMode: (enabled) => set((state) => ({
+        drawingState: { ...state.drawingState, continuousWallMode: enabled }
     })),
 
     // Wall actions

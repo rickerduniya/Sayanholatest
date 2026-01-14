@@ -1,0 +1,270 @@
+# SayanhoWeb — Master Implementation Plan (Magic Sync)
+
+## 1) Validation Report (Audit Findings)
+
+### What is working
+
+#### Layout → SLD item identity is *conditionally* stable
+- `generateSldFromLayout()` creates each SLD `CanvasItem` with:
+  - `uniqueID = ` `sld_${layoutComp.id}` (see `createProperSldItem()`)
+  - property `'_layoutComponentId': layoutComp.id`
+- This means: **if the Layout component `id` is stable**, repeated Layout→SLD sync will re-generate the *same* SLD IDs, and `LayoutDesigner.handleSyncToSld()` will correctly dedupe based on `uniqueID`.
+
+#### Staging placement preserves IDs in both canvases
+- **SLD Canvas (`Canvas.tsx`)**: when dropping from the “Unplaced Items” tab, it uses `uniqueID: stagingItemId` and then calls:
+  - `removeStagingItem(stagingItemId)`
+  - `markStagingItemPlaced(stagingItemId)`
+  This prevents duplicate placement.
+- **Layout Canvas (`LayoutCanvas.tsx`)**: when dropping from Layout “Unplaced”, it creates the component with `id: data.id` and adds it via `addComponentWithId()`, then removes it from layout staging.
+
+### What is fragile / incorrect (identity + edge cases)
+
+#### (Critical) SLD → Layout reverse sync breaks identity and causes ID churn
+In `SyncEngine.syncSldToLayout()`:
+- For “unplaced” SLD items, it creates staging layout components with:
+  - `id: staging_${item.uniqueID}_${i}` (temporary)
+  - `sldItemId: item.uniqueID`
+- When you drop that staging item onto Layout, `LayoutCanvas` **preserves that temporary `id`** permanently.
+
+Then on the next Layout → SLD sync:
+- `createProperSldItem()` generates `uniqueID = sld_${layoutComp.id}`
+- But `layoutComp.id` is now something like `staging_<oldSldId>_0`, therefore the newly generated SLD ID becomes something like:
+  - `sld_staging_<oldSldId>_0`
+- This does **not** match the original `item.uniqueID` that the layout component was linked to via `sldItemId`.
+
+Result:
+- **Layout→SLD→Layout roundtrips create new IDs forever**.
+- Users can get duplicates and ambiguous mapping.
+
+#### (Critical) SLD-native item creation does not establish a canonical Layout link
+When you create an item directly in SLD from the library (normal toolbox drop):
+- `Canvas.handleDrop()` does not guarantee `_layoutComponentId` exists in `properties[0]`.
+- Reverse sync relies on `_layoutComponentId` to know what layout component it corresponds to.
+
+So for SLD-native items:
+- Reverse sync has no canonical “target Layout ID” to use.
+- The current implementation invents a temporary `staging_...` Layout ID, which triggers the churn described above.
+
+#### (Critical) Duplicating/copy-pasting SLD items can duplicate `_layoutComponentId`
+`useStore.duplicateItem()` copies `properties` verbatim.
+- If we introduce `_layoutComponentId` for SLD-native items (required), duplication must also regenerate it.
+- Otherwise two SLD items will point to the same Layout component ID → **mapping ambiguity**.
+
+#### Deletion behavior currently creates orphans (fails Goal 1)
+- Deleting a Layout component (`useLayoutStore.removeComponent`) does not delete the SLD item.
+- Deleting an SLD item (`useStore.deleteItem/deleteSelected`) does not delete the Layout component.
+
+Observed effect with current logic:
+- If you delete a bulb in Layout, the SLD bulb symbol remains.
+- Later, reverse sync may treat it as “unplaced” and offer it again in Layout staging (effectively undoing deletion).
+
+This violates “perfect 1:1 mapping” unless the product intentionally supports “unplace” semantics (which should be a distinct action, not implied by delete).
+
+#### Reverse sync has dead / misleading logic
+In `syncSldToLayout()`:
+- `linkedLayoutIds` is built but never used for filtering.
+- It checks `floorPlan.components.some(c => c.id === linkedLayoutId)` but does not ensure the reverse link (`layout.sldItemId`) matches.
+
+### Required invariants (must become true everywhere)
+For any synced pair:
+- **Invariant A**: `sldItem.properties[0]._layoutComponentId === layoutComponent.id`
+- **Invariant B**: `layoutComponent.sldItemId === sldItem.uniqueID`
+
+If we maintain A+B:
+- Identity is unambiguous.
+- Teleportation is trivial.
+- Auto-connection becomes deterministic.
+
+
+## 2) Auto-Connection Architecture (SLD-defined wiring rendered in Layout)
+
+### Goal
+- The *logic* of connections lives in SLD (`storedConnectors`).
+- Layout renders a derived “wiring overlay” (dashed curved lines) between *already placed* physical components.
+- No manual wire drawing needed in Layout for logical wiring.
+
+### Authoritative data
+- **SLD**: `useStore()` → active sheet → `storedConnectors: Connector[]`
+- Each `Connector` references `sourceItem` and `targetItem` (`CanvasItem`).
+- Each `CanvasItem` must contain `properties[0]._layoutComponentId`.
+- **Layout**: `useLayoutStore()` → current plan → `components: LayoutComponent[]`
+
+### Derived wiring algorithm (efficient, avoids O(n^2))
+In `LayoutCanvas.tsx`:
+1. Build `layoutPosById: Map<string, Point>` from `currentPlan.components` (O(nComponents)).
+2. Build `layoutConnEndpoints` by iterating SLD connectors once (O(nConnectors)):
+   - For connector endpoints:
+     - `srcLayoutId = connector.sourceItem.properties[0]._layoutComponentId`
+     - `dstLayoutId = connector.targetItem.properties[0]._layoutComponentId`
+   - If either ID missing → skip (or log).
+   - If both IDs exist and both are present in `layoutPosById` → render a dashed curve.
+
+This is O(nComponents + nConnectors) per render and scales to 100+ components.
+
+### Path / curve rendering
+- Use Konva `Line` with:
+  - `points = [sx, sy, mx, my, tx, ty]`
+  - `tension = 0.35` (smooth curve)
+  - `dash = [6, 6]`, `opacity ~ 0.6`
+- Compute midpoint and offset to avoid perfectly straight overlaps:
+  - `mx,my` = midpoint + perpendicular offset scaled by distance.
+
+### Complex chains (DB → Switch → Fan)
+- In SLD, this is already represented as pairwise connectors.
+- Layout should draw **one segment per connector**:
+  - DB→Switch
+  - Switch→Fan
+- If later you introduce “nets”, you can optionally group connectors by netId and render thicker bundles, but it is not required for correctness.
+
+### Movement updates
+- Layout component drag updates `currentPlan.components[position]`.
+- Derived wires recompute from the map and redraw instantly.
+
+### Coexistence with manual layout connections
+`currentPlan.connections` currently stores user-drawn layout wires.
+Recommended:
+- Keep manual routing as an *optional* feature (conduit routes).
+- Render two layers:
+  - **Logical overlay** (derived from SLD connectors) — dashed, non-editable.
+  - **Physical routing** (stored connections) — solid, editable.
+
+
+## 3) Step-by-Step Executable Plan (Code Changes)
+
+### Phase 1 — Make identity stable (stop infinite ID generation)
+
+#### 1.1 Ensure every SLD item has a canonical `_layoutComponentId`
+File: `src/components/Canvas.tsx`
+- After properties initialization (where we currently merge `existingProps` for staging items), enforce:
+  - If `newItem.properties[0]._layoutComponentId` is missing, set it to a newly generated stable Layout ID (e.g. `comp_${crypto.randomUUID()}`).
+
+Why:
+- Reverse sync must be able to place the *exact* intended Layout component identity.
+
+#### 1.2 Fix SLD duplication/copy/paste to not clone `_layoutComponentId`
+File: `src/store/useStore.ts`
+- In `duplicateItem()` (and in paste logic if it exists), when creating the duplicated `CanvasItem`:
+  - Regenerate `_layoutComponentId` inside `properties[0]`.
+
+Why:
+- Otherwise, two schematic symbols would map to the same physical component ID (breaks 1:1).
+
+#### 1.3 Fix reverse sync staging IDs to use canonical IDs (not `staging_*`)
+File: `src/utils/SyncEngine.ts`
+- In `syncSldToLayout()`:
+  - Determine `layoutId = props._layoutComponentId`.
+  - If missing, **do not invent a `staging_*`** ID. Instead allocate one and persist it back into SLD item properties (requires a store action or a callback).
+  - Create staging layout components with:
+    - `id: layoutId`
+    - `sldItemId: item.uniqueID`
+
+Also dedupe staging on:
+- existing layout component IDs
+- existing staging component IDs
+
+Outcome:
+- Dropping “unplaced” in Layout creates a component with the **final canonical ID**, so Layout→SLD won’t generate new SLD IDs endlessly.
+
+#### 1.4 Make Layout→SLD generation respect existing `layoutComp.sldItemId`
+File: `src/utils/SyncEngine.ts`
+- In `createProperSldItem()` set:
+  - `uniqueID = layoutComp.sldItemId ?? ` `sld_${layoutComp.id}`
+
+Outcome:
+- If a layout component originated from SLD (already linked via `sldItemId`), you do not generate a new SLD symbol ID.
+
+
+### Phase 2 — Decide and implement deletion semantics (prevent orphans)
+
+#### 2.1 Adopt explicit semantics
+- **Delete** means delete the unified entity everywhere.
+- **Unplace** (optional feature) means remove it from the current view but keep it in the model as “unplaced” in that view.
+
+#### 2.2 Implement delete propagation
+- Layout → SLD:
+  - When deleting a layout component, if it has `sldItemId`, call `useStore.getState().deleteItem(sldItemId)`.
+- SLD → Layout:
+  - When deleting an SLD item, read `_layoutComponentId` and call `useLayoutStore.getState().removeComponent(layoutId)`.
+
+Primary hook locations:
+- Layout deletion: `useLayoutStore.removeComponent()` and/or `deleteSelected()`
+- SLD deletion: `useStore.deleteItem()` and `deleteSelected()`
+
+Important:
+- Also remove any corresponding staging entries (both sides) so they don’t reappear.
+
+
+### Phase 3 — Implement “Magic Wire” (SLD connectors → Layout overlay)
+
+#### 3.1 Read SLD connectors inside LayoutCanvas
+File: `src/components/LayoutCanvas.tsx`
+- Import `useStore`.
+- Select active sheet connectors:
+  - `const { sheets, activeSheetId } = useStore()`
+  - `const activeSheet = sheets.find(s => s.sheetId === activeSheetId)`
+  - `const connectors = activeSheet?.storedConnectors || []`
+
+#### 3.2 Build derived wires with `useMemo`
+- `layoutPosById` from `currentPlan.components`.
+- For each connector, map endpoints via `_layoutComponentId`.
+- Only render when both endpoints exist and are placed.
+
+#### 3.3 Render overlay
+- Add `renderLogicalWires()` before `renderComponents()`.
+- Use dashed curved `Line` in Konva.
+
+#### 3.4 Add UI toggle
+File: `src/components/LayoutToolbar.tsx`
+- Add a toggle: “Show Logical Wires”.
+- Store it either in `useLayoutStore` or component state.
+
+
+### Phase 4 — Teleportation (Go to Schematic / Go to Layout)
+
+#### 4.1 Shared navigation contract
+- Layout component → SLD item:
+  - `layoutComponent.sldItemId`
+- SLD item → Layout component:
+  - `sldItem.properties[0]._layoutComponentId`
+
+#### 4.2 Implement focus APIs
+- Add `focusItem(id)` to SLD `CanvasRef` (similar to `fitView` but centered on a target item).
+- Add `focusComponent(id)` to `LayoutCanvasRef`.
+
+Implementation approach options:
+- **Option A (recommended)**: add `pendingFocus` fields in the relevant zustand stores, canvases subscribe and perform pan/zoom then clear the request.
+- **Option B**: plumb refs down from parent and call directly.
+
+#### 4.3 Add context menu actions
+- In LayoutCanvas component context menu:
+  - “Go to Schematic” → switch view to SLD → set focus request to `sldItemId`.
+- In SLD Canvas context menu:
+  - “Go to Layout” → switch view to Layout → set focus request to `_layoutComponentId`.
+
+
+## 4) Verification Checklist (must pass before calling it done)
+
+### Identity loop
+1. Place 5 bulbs in Layout.
+2. Sync to SLD.
+3. Place the 5 unplaced bulb symbols in SLD.
+4. Sync back and forth 5 times.
+- Expected: **No new IDs created**, no duplicate unplaced items.
+
+### Delete propagation
+1. Delete a bulb in Layout.
+- Expected: the linked SLD symbol disappears.
+2. Delete a bulb symbol in SLD.
+- Expected: the linked Layout component disappears.
+
+### Magic wire
+1. In SLD connect Switch → Fan.
+2. In Layout, with both placed, you see a dashed curved line.
+3. Move Switch in Layout.
+- Expected: dashed line updates instantly.
+
+### Teleportation
+1. Right-click Layout component → Go to Schematic.
+- Expected: pans to correct symbol and selects it.
+2. Right-click SLD symbol → Go to Layout.
+- Expected: pans to correct component and selects it.

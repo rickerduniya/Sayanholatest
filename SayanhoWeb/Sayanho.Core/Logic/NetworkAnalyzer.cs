@@ -601,6 +601,105 @@ namespace Sayanho.Core.Logic
                             }
                         }
                     }
+                    else if (targetItem.Name != null && targetItem.Name == "Busbar Chamber")
+                    {
+                        // Busbar Chamber phase/voltage logic:
+                        // - 2-bar: single-phase system, all outgoing inherit incomer phase (R/Y/B), 230V
+                        // - 4-bar: outgoing phase per configuration (R/Y/B => 230V, ALL => 415V)
+                        string bars = "4";
+                        if (targetItem.Properties != null && targetItem.Properties.Any())
+                        {
+                            bars = targetItem.Properties.First().GetValueOrDefault("Bars", "4") ?? "4";
+                        }
+
+                        foreach (var outConnector in outgoingConnectors)
+                        {
+                            string outKey = outConnector.SourcePointKey ?? "";
+                            int outIndex = -1;
+                            if (outKey.StartsWith("out", StringComparison.OrdinalIgnoreCase))
+                            {
+                                // Accept keys like out1 or out1_R etc.
+                                var indexPart = outKey.Substring(3).Split('_')[0];
+                                if (int.TryParse(indexPart, out int parsedIdx))
+                                {
+                                    outIndex = parsedIdx - 1;
+                                }
+                            }
+
+                            float linkVoltage = 415f;
+                            string linkPhase = "ALL";
+
+                            if (string.Equals(bars, "2", StringComparison.OrdinalIgnoreCase))
+                            {
+                                linkVoltage = 230f;
+                                linkPhase = phase;
+                                if (linkPhase != "R" && linkPhase != "Y" && linkPhase != "B")
+                                {
+                                    linkPhase = "R";
+                                }
+                            }
+                            else
+                            {
+                                string configuredPhase = "";
+                                if (outIndex >= 0 && targetItem.Outgoing != null && outIndex < targetItem.Outgoing.Count)
+                                {
+                                    configuredPhase = targetItem.Outgoing[outIndex].GetValueOrDefault("Phase", "") ?? "";
+                                }
+
+                                // Default to round-robin if not configured
+                                if (string.IsNullOrWhiteSpace(configuredPhase))
+                                {
+                                    var defaultPhases = new[] { "R", "Y", "B" };
+                                    configuredPhase = defaultPhases[Math.Max(outIndex, 0) % 3];
+                                }
+
+                                if (string.Equals(configuredPhase, "ALL", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    linkVoltage = 415f;
+                                    linkPhase = "ALL";
+                                }
+                                else
+                                {
+                                    linkVoltage = 230f;
+                                    if (string.Equals(configuredPhase, "Y", StringComparison.OrdinalIgnoreCase)) linkPhase = "Y";
+                                    else if (string.Equals(configuredPhase, "B", StringComparison.OrdinalIgnoreCase)) linkPhase = "B";
+                                    else linkPhase = "R";
+                                }
+                            }
+
+                            TraceAndCalculateCurrent(outConnector, linkVoltage, phaseType, linkPhase, visited);
+
+                            if (outConnector.CurrentValues.ContainsKey("Current"))
+                            {
+                                string currentStr = outConnector.CurrentValues["Current"];
+                                if (float.TryParse(currentStr.Split(' ')[0], out float branchCurrent))
+                                {
+                                    totalCurrent += branchCurrent;
+                                }
+                            }
+
+                            if (outConnector.CurrentValues.ContainsKey("R_Current"))
+                            {
+                                string rCurrentStr = outConnector.CurrentValues["R_Current"];
+                                if (float.TryParse(rCurrentStr.Split(' ')[0], out float rBranchCurrent))
+                                    rPhaseCurrent += rBranchCurrent;
+                            }
+
+                            if (outConnector.CurrentValues.ContainsKey("Y_Current"))
+                            {
+                                string yCurrentStr = outConnector.CurrentValues["Y_Current"];
+                                if (float.TryParse(yCurrentStr.Split(' ')[0], out float yBranchCurrent))
+                                    yPhaseCurrent += yBranchCurrent;
+                            }
+
+                            if (outConnector.CurrentValues.ContainsKey("B_Current"))
+                            {
+                                string bCurrentStr = outConnector.CurrentValues["B_Current"];
+                                if (float.TryParse(bCurrentStr.Split(' ')[0], out float bBranchCurrent))
+                                    bPhaseCurrent += bBranchCurrent;
+                            }
+                        }
+                    }
                     else if (targetItem.Name != null && targetItem.Name.Contains("HTPN"))
                     {
                         // For HTPN DB, each outgoing connection has its own phase based on the connection point

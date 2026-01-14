@@ -11,6 +11,7 @@ namespace Sayanho.Core.Models
         public Size Size { get; set; }
         public string IconPath { get; set; } = string.Empty; // Renamed from icon
         public Dictionary<string, Point> ConnectionPoints { get; set; } = new(); // Renamed from connectionpoint
+        public List<Dictionary<string, string>> Outgoing { get; set; } = new();
         public List<string> IncomingPriorityList { get; set; } = new();
     }
 }
