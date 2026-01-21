@@ -795,14 +795,20 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
             console.log('[Canvas] Generated canonical _layoutComponentId:', newItem.properties[0]['_layoutComponentId']);
         }
 
+        // If this is a staging item, mark as in-flight FIRST to prevent race conditions
+        if (isStagingItem && stagingItemId) {
+            markStagingItemPlaced(stagingItemId);
+        }
+
+        // Now add the item to canvas
         addItem(newItem);
 
-        // If this was a staging item, remove it from staging and mark as placed
+        // If this was a staging item, clean up staging
         if (isStagingItem && stagingItemId) {
             removeStagingItem(stagingItemId);
-            markStagingItemPlaced(stagingItemId);
             console.log('[Canvas] Staging item placed and removed from staging:', stagingItemId);
 
+            // Update the linked Layout component with the SLD item ID
             const layoutId = (newItem.properties?.[0] as any)?.['_layoutComponentId'];
             if (layoutId) {
                 try {

@@ -14,19 +14,21 @@ import {
     LayoutWindow,
     LayoutComponent,
     DrawingTool,
-    LayoutComponentType
+    LayoutComponentType,
+    OcrItem
 } from '../types/layout';
 import { Point } from '../types';
 import {
-    snapToGrid,
     snapToWall,
     constrainWallAngle,
     DRAWING_TOOL_CURSORS,
     DRAWING_TOOL_INSTRUCTIONS,
     getRoomCentroid,
+    calculateRoomArea,
     isPointInRoom,
     findRoomAtPoint,
-    getDistanceLabel,
+    getDistanceLabelWithUnit,
+    getAreaLabel,
     calculateOrthogonalPath
 } from '../utils/LayoutDrawingTools';
 import {
@@ -48,6 +50,7 @@ export interface LayoutCanvasRef {
 interface LayoutCanvasProps {
     onScaleChange?: (scale: number) => void;
     showMagicWires?: boolean;
+    onCalibrationFinished?: (pixelLength: number) => void;
 }
 
 // Room type to color mapping
@@ -79,7 +82,7 @@ const DETECTED_ROOM_PALETTE = [
     'rgba(34, 197, 94, 0.7)',     // emerald
 ];
 
-export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ onScaleChange, showMagicWires }, ref) => {
+export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ onScaleChange, showMagicWires, onCalibrationFinished }, ref) => {
     const stageRef = useRef<any>(null);
     const { theme, colors } = useTheme();
     const componentImages = useLayoutComponentImages();
@@ -114,6 +117,21 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
 
     const currentPlan = getCurrentFloorPlan();
 
+    useEffect(() => {
+        if (!currentPlan) return;
+        console.log('[LayoutCanvas] currentPlan calibration', {
+            planId: currentPlan.id,
+            pixelsPerMeter: currentPlan.pixelsPerMeter,
+            measurementUnit: currentPlan.measurementUnit,
+            isScaleCalibrated: currentPlan.isScaleCalibrated
+        });
+    }, [
+        currentPlan?.id,
+        currentPlan?.pixelsPerMeter,
+        currentPlan?.measurementUnit,
+        currentPlan?.isScaleCalibrated
+    ]);
+
     // Local state
     const [scale, setScale] = useState(currentPlan?.scale || 0.5);
     const [position, setPosition] = useState({
@@ -129,6 +147,39 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
 
     // HUD State
     const [hoverInfo, setHoverInfo] = useState<{ x: number, y: number, text: string } | null>(null);
+    const [ocrHoverInfo, setOcrHoverInfo] = useState<{ x: number, y: number, text: string } | null>(null);
+
+    const [showOcr, setShowOcr] = useState(true);
+    const [ocrMinConfidence, setOcrMinConfidence] = useState(60);
+    const [ocrQuery, setOcrQuery] = useState('');
+    const [showOcrBoxes, setShowOcrBoxes] = useState(false);
+    const [selectedOcrId, setSelectedOcrId] = useState<string | null>(null);
+    const [ocrCopied, setOcrCopied] = useState(false);
+
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem('layout_ocr_settings');
+            if (!raw) return;
+            const s = JSON.parse(raw);
+            if (typeof s.showOcr === 'boolean') setShowOcr(s.showOcr);
+            if (typeof s.ocrMinConfidence === 'number') setOcrMinConfidence(s.ocrMinConfidence);
+            if (typeof s.ocrQuery === 'string') setOcrQuery(s.ocrQuery);
+            if (typeof s.showOcrBoxes === 'boolean') setShowOcrBoxes(s.showOcrBoxes);
+        } catch {
+        }
+        // Only once
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    useEffect(() => {
+        try {
+            localStorage.setItem(
+                'layout_ocr_settings',
+                JSON.stringify({ showOcr, ocrMinConfidence, ocrQuery, showOcrBoxes })
+            );
+        } catch {
+        }
+    }, [showOcr, ocrMinConfidence, ocrQuery, showOcrBoxes]);
 
     useEffect(() => {
         if (!currentPlan) return;
@@ -202,9 +253,9 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
     }, [currentPlan?.id, containerSize.width, containerSize.height]);
 
     // PHASE 3.1: Read SLD connectors for Magic Wire feature
-    const { sheets, activeSheetId } = useStore();
-    const activeSheet = sheets.find(s => s.sheetId === activeSheetId);
-    const sldConnectors = activeSheet?.storedConnectors || [];
+    // Include ALL sheets to support cross-sheet connections
+    const { sheets } = useStore();
+    const sldConnectors = sheets.flatMap(s => s.storedConnectors);
 
     // Context Menu State
     const [menu, setMenu] = useState<{ visible: boolean; x: number; y: number; componentId: string | null }>({
@@ -220,15 +271,14 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
         if (!showMagicWires || !currentPlan || sldConnectors.length === 0) return [];
 
         // Build layoutId → position map from current plan components
+        // Components are rendered with their position as the CENTER (using Konva offset)
+        // So we use the position directly
         const layoutPosById = new Map<string, { x: number; y: number }>();
         for (const comp of currentPlan.components) {
-            const def = LAYOUT_COMPONENT_DEFINITIONS[comp.type];
-            const w = def?.size?.width || 24;
-            const h = def?.size?.height || 24;
-            // Center position
+            // Position IS the center point (components are rendered with offset)
             layoutPosById.set(comp.id, {
-                x: comp.position.x + w / 2,
-                y: comp.position.y + h / 2
+                x: comp.position.x,
+                y: comp.position.y
             });
         }
 
@@ -438,10 +488,6 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
         const x = (pointer.x - position.x) / scale;
         const y = (pointer.y - position.y) / scale;
 
-        if (drawingState.gridSnap) {
-            return snapToGrid({ x, y }, drawingState.gridSize);
-        }
-
         return { x, y };
     };
 
@@ -515,9 +561,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                 // Complete wall
                 if (currentPath.length > 0) {
                     const start = currentPath[0];
-                    const end = drawingState.gridSnap
-                        ? constrainWallAngle(start, point, 45)
-                        : point;
+                    const end = point;
 
                     // Prevent zero length walls
                     if (Math.hypot(end.x - start.x, end.y - start.y) > 5) {
@@ -653,6 +697,25 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
             }
             return;
         }
+
+        if (tool === 'calibrate') {
+            if (!isDrawing) {
+                setIsDrawing(true);
+                setCurrentPath([point]);
+            } else {
+                // Complete calibration line
+                const start = currentPath[0];
+                const end = point;
+                const length = Math.hypot(end.x - start.x, end.y - start.y);
+
+                if (length > 5) {
+                    onCalibrationFinished?.(length);
+                    setIsDrawing(false);
+                    setCurrentPath([]);
+                }
+            }
+            return;
+        }
     };
 
     // Handle mouse move
@@ -667,16 +730,36 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
 
         if (tool === 'wall' && currentPath.length > 0) {
             const start = currentPath[0];
-            const end = drawingState.gridSnap
-                ? constrainWallAngle(start, point, 45)
-                : point;
+            const end = point;
             setCurrentPath([start, end]);
 
             // Update HUD
             const pxLen = Math.hypot(end.x - start.x, end.y - start.y);
             const angle = Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI;
             const normalizedAngle = (angle < 0 ? angle + 360 : angle).toFixed(1);
-            const label = `${getDistanceLabel(pxLen, currentPlan?.pixelsPerMeter || 50)} | ${normalizedAngle}°`;
+            const unit = currentPlan?.measurementUnit || 'm';
+            const label = `${getDistanceLabelWithUnit(pxLen, currentPlan?.pixelsPerMeter || 50, unit)} | ${normalizedAngle}°`;
+
+            // Screen coordinates for HUD
+            const stage = stageRef.current;
+            if (stage) {
+                const pointerPos = stage.getPointerPosition();
+                if (pointerPos) {
+                    setHoverInfo({
+                        x: pointerPos.x + 20,
+                        y: pointerPos.y + 20,
+                        text: label
+                    });
+                }
+            }
+        } else if (tool === 'calibrate' && currentPath.length > 0) {
+            const start = currentPath[0];
+            const end = point;
+            setCurrentPath([start, end]);
+
+            // HUD for calibration
+            const pxLen = Math.hypot(end.x - start.x, end.y - start.y);
+            const label = `${pxLen.toFixed(0)} px`;
 
             // Screen coordinates for HUD
             const stage = stageRef.current;
@@ -731,6 +814,152 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
         return null;
     };
 
+    const normalizedOcrQuery = ocrQuery.trim().toLowerCase();
+
+    const filteredOcrItems = useMemo(() => {
+        if (!currentPlan?.ocr?.enabled || !currentPlan.ocr.items) return [] as OcrItem[];
+        const minConf = Number.isFinite(ocrMinConfidence) ? (ocrMinConfidence / 100) : 0;
+        const q = normalizedOcrQuery;
+        return currentPlan.ocr.items.filter(it => {
+            const conf = (it.confidence ?? 0) / 100;
+            if (conf < minConf) return false;
+            if (!q) return true;
+            return (it.text || '').toLowerCase().includes(q);
+        });
+    }, [currentPlan?.ocr?.enabled, currentPlan?.ocr?.items, ocrMinConfidence, normalizedOcrQuery]);
+
+    const visibleOcrItems = useMemo(() => {
+        if (!filteredOcrItems || filteredOcrItems.length === 0) return [] as OcrItem[];
+
+        const ordered = [...filteredOcrItems].sort((a, b) => (b.confidence ?? 0) - (a.confidence ?? 0));
+        const picked: OcrItem[] = [];
+        const minDist = Math.max(10, 18 * (scale > 1e-6 ? (1 / scale) : 1));
+
+        for (const it of ordered) {
+            const cx = it.center.x;
+            const cy = it.center.y;
+
+            let ok = true;
+            for (const p of picked) {
+                const dx = cx - p.center.x;
+                const dy = cy - p.center.y;
+                if ((dx * dx + dy * dy) < (minDist * minDist)) {
+                    ok = false;
+                    break;
+                }
+            }
+            if (ok) picked.push(it);
+        }
+
+        return picked;
+    }, [filteredOcrItems, scale]);
+
+    const renderOcrOverlay = () => {
+        if (!currentPlan?.ocr?.enabled) return null;
+        if (!showOcr) return null;
+        if (!visibleOcrItems || visibleOcrItems.length === 0) return null;
+
+        const invScale = scale > 1e-6 ? (1 / scale) : 1;
+        const fontSize = Math.max(8, Math.min(16, 12 * invScale));
+        const pad = 2 * invScale;
+        const strokeW = 1 * invScale;
+
+        const toScreen = (p: { x: number; y: number }) => ({
+            x: p.x * scale + position.x,
+            y: p.y * scale + position.y
+        });
+
+        return visibleOcrItems.map((it) => {
+            const isSelected = selectedOcrId === it.id;
+            const bbox = it.bbox;
+            const x = it.center.x;
+            const y = it.center.y;
+            const bgFill = theme === 'dark' ? 'rgba(0,0,0,0.65)' : 'rgba(255,255,255,0.75)';
+            const textFill = theme === 'dark' ? '#f9fafb' : '#111827';
+            const accent = isSelected ? '#3b82f6' : '#10b981';
+
+            const handleEnter = () => {
+                const stage = stageRef.current?.getStage?.();
+                const pointer = stage?.getPointerPosition?.();
+                if (pointer) {
+                    setOcrHoverInfo({ x: pointer.x + 16, y: pointer.y + 16, text: it.text });
+                } else {
+                    const p = toScreen({ x, y });
+                    setOcrHoverInfo({ x: p.x + 16, y: p.y + 16, text: it.text });
+                }
+            };
+
+            const handleMove = () => {
+                const stage = stageRef.current?.getStage?.();
+                const pointer = stage?.getPointerPosition?.();
+                if (!pointer) return;
+                setOcrHoverInfo({ x: pointer.x + 16, y: pointer.y + 16, text: it.text });
+            };
+
+            const handleLeave = () => setOcrHoverInfo(null);
+
+            const handleClick = async () => {
+                setSelectedOcrId(it.id);
+                try {
+                    await navigator.clipboard.writeText(it.text);
+                    const stage = stageRef.current?.getStage?.();
+                    const pointer = stage?.getPointerPosition?.();
+                    if (pointer) {
+                        setOcrHoverInfo({ x: pointer.x + 16, y: pointer.y + 16, text: `Copied: ${it.text}` });
+                        window.setTimeout(() => setOcrHoverInfo(null), 1200);
+                    }
+                } catch {
+                }
+            };
+
+            return (
+                <Group
+                    key={it.id}
+                    onMouseEnter={handleEnter}
+                    onMouseMove={handleMove}
+                    onMouseLeave={handleLeave}
+                    onClick={handleClick}
+                >
+                    {showOcrBoxes && (
+                        <Rect
+                            x={bbox.x1}
+                            y={bbox.y1}
+                            width={Math.max(0, bbox.x2 - bbox.x1)}
+                            height={Math.max(0, bbox.y2 - bbox.y1)}
+                            stroke={accent}
+                            strokeWidth={strokeW}
+                            dash={[4 * invScale, 3 * invScale]}
+                            listening={false}
+                        />
+                    )}
+
+                    <Rect
+                        x={x - 2}
+                        y={y - fontSize / 2 - pad}
+                        width={Math.max(40 * invScale, (it.text.length * (fontSize * 0.6)) + (pad * 2))}
+                        height={fontSize + pad * 2}
+                        fill={bgFill}
+                        stroke={accent}
+                        strokeWidth={strokeW}
+                        cornerRadius={3 * invScale}
+                        opacity={isSelected ? 0.95 : 0.7}
+                        listening={false}
+                    />
+
+                    <Text
+                        x={x}
+                        y={y - fontSize / 2}
+                        text={it.text}
+                        fontSize={fontSize}
+                        fill={textFill}
+                        align="left"
+                        listening={false}
+                    />
+                </Group>
+            );
+        });
+    };
+
     // Render rooms
     const renderRooms = () => {
         if (!currentPlan) return null;
@@ -742,6 +971,16 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
             // Always use palette for detected rooms unless a custom color is set (ignore room.type)
             const fillColor = room.color || DETECTED_ROOM_PALETTE[idx % DETECTED_ROOM_PALETTE.length];
 
+            const unit = currentPlan.measurementUnit || 'm';
+            const showArea = Boolean(
+                currentPlan.isScaleCalibrated ||
+                unit === 'ft' ||
+                Math.abs((currentPlan.pixelsPerMeter || 50) - 50) > 1e-6
+            );
+            const areaLabel = showArea
+                ? getAreaLabel(calculateRoomArea(room), currentPlan.pixelsPerMeter || 50, unit)
+                : '';
+
             return (
                 <Group key={room.id} onClick={() => selectElement(room.id)}>
                     <Line
@@ -752,16 +991,63 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                         closed
                         lineJoin="miter"
                     />
-                    <Text
-                        x={centroid.x - 30}
-                        y={centroid.y - 8}
-                        text={room.name}
-                        fontSize={12}
-                        fill={theme === 'dark' ? '#fff' : '#333'}
-                        align="center"
-                        width={60}
-                        listening={false} // Allow clicks to pass through to the Group
+
+                    {/* Smart Room Label - Background Box */}
+                    <Rect
+                        x={centroid.x - 70}
+                        y={centroid.y - 32}
+                        width={140}
+                        height={room.detectedMeasurements ? 58 : (room.ocrArea ? 42 : 26)}
+                        fill={theme === 'dark' ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.85)'}
+                        cornerRadius={4}
+                        listening={false}
                     />
+
+                    {/* Room Name (Bold) */}
+                    <Text
+                        x={centroid.x - 65}
+                        y={centroid.y - 28}
+                        text={room.name}
+                        fontSize={13}
+                        fontStyle="bold"
+                        fill={theme === 'dark' ? '#fff' : '#1f2937'}
+                        align="center"
+                        width={130}
+                        listening={false}
+                    />
+
+                    {/* Detected Dimensions */}
+                    {room.detectedMeasurements && (
+                        <Text
+                            x={centroid.x - 65}
+                            y={centroid.y - 12}
+                            text={room.detectedMeasurements}
+                            fontSize={10}
+                            fill={theme === 'dark' ? '#9ca3af' : '#6b7280'}
+                            align="center"
+                            width={130}
+                            listening={false}
+                        />
+                    )}
+
+                    {/* Area Label - Prefer OCR area, fallback to polygon */}
+                    {(room.ocrArea || showArea) && (
+                        <Text
+                            x={centroid.x - 65}
+                            y={centroid.y + (room.detectedMeasurements ? 4 : -12) + 14}
+                            text={
+                                room.ocrArea
+                                    ? `${room.ocrArea.toFixed(2)} sq.ft`
+                                    : areaLabel
+                            }
+                            fontSize={11}
+                            fontStyle="bold"
+                            fill={room.ocrArea ? '#10b981' : (theme === 'dark' ? '#fbbf24' : '#d97706')}
+                            align="center"
+                            width={130}
+                            listening={false}
+                        />
+                    )}
                 </Group>
             );
         });
@@ -814,7 +1100,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                                 x={wall.startPoint.x}
                                 y={wall.startPoint.y}
                                 radius={9}
-                                fill={theme === 'dark' ? '#111827' : '#ffffff'}
+                                fill="transparent"
                                 stroke="#3b82f6"
                                 strokeWidth={2}
                                 draggable
@@ -825,19 +1111,33 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                                 onDragMove={(e) => {
                                     e.cancelBubble = true;
                                     const pos = { x: e.target.x(), y: e.target.y() };
-                                    const next = drawingState.gridSnap
-                                        ? constrainWallAngle(wall.endPoint, pos, 45)
-                                        : pos;
-                                    e.target.x(next.x);
-                                    e.target.y(next.y);
+
+                                    // Project point onto line defined by (endPoint -> startPoint) to preserve angle
+                                    const fixed = wall.endPoint;
+                                    const original = wall.startPoint;
+
+                                    const dx = original.x - fixed.x;
+                                    const dy = original.y - fixed.y;
+                                    const magSq = dx * dx + dy * dy;
+
+                                    if (magSq > 1e-6) {
+                                        // Project vector (pos - fixed) onto vector (original - fixed)
+                                        const vmx = pos.x - fixed.x;
+                                        const vmy = pos.y - fixed.y;
+                                        const dot = vmx * dx + vmy * dy;
+                                        const t = dot / magSq;
+
+                                        const nx = fixed.x + t * dx;
+                                        const ny = fixed.y + t * dy;
+
+                                        e.target.x(nx);
+                                        e.target.y(ny);
+                                    }
                                 }}
                                 onDragEnd={(e) => {
                                     e.cancelBubble = true;
-                                    const pos = { x: e.target.x(), y: e.target.y() };
-                                    const next = drawingState.gridSnap
-                                        ? constrainWallAngle(wall.endPoint, pos, 45)
-                                        : pos;
-                                    updateWall(wall.id, { startPoint: next });
+                                    // The position is already constrained by DragMove
+                                    updateWall(wall.id, { startPoint: { x: e.target.x(), y: e.target.y() } });
                                 }}
                             />
 
@@ -845,7 +1145,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                                 x={wall.endPoint.x}
                                 y={wall.endPoint.y}
                                 radius={9}
-                                fill={theme === 'dark' ? '#111827' : '#ffffff'}
+                                fill="transparent"
                                 stroke="#3b82f6"
                                 strokeWidth={2}
                                 draggable
@@ -856,19 +1156,32 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                                 onDragMove={(e) => {
                                     e.cancelBubble = true;
                                     const pos = { x: e.target.x(), y: e.target.y() };
-                                    const next = drawingState.gridSnap
-                                        ? constrainWallAngle(wall.startPoint, pos, 45)
-                                        : pos;
-                                    e.target.x(next.x);
-                                    e.target.y(next.y);
+
+                                    // Project point onto line defined by (startPoint -> endPoint) to preserve angle
+                                    const fixed = wall.startPoint;
+                                    const original = wall.endPoint;
+
+                                    const dx = original.x - fixed.x;
+                                    const dy = original.y - fixed.y;
+                                    const magSq = dx * dx + dy * dy;
+
+                                    if (magSq > 1e-6) {
+                                        // Project vector (pos - fixed) onto vector (original - fixed)
+                                        const vmx = pos.x - fixed.x;
+                                        const vmy = pos.y - fixed.y;
+                                        const dot = vmx * dx + vmy * dy;
+                                        const t = dot / magSq;
+
+                                        const nx = fixed.x + t * dx;
+                                        const ny = fixed.y + t * dy;
+
+                                        e.target.x(nx);
+                                        e.target.y(ny);
+                                    }
                                 }}
                                 onDragEnd={(e) => {
                                     e.cancelBubble = true;
-                                    const pos = { x: e.target.x(), y: e.target.y() };
-                                    const next = drawingState.gridSnap
-                                        ? constrainWallAngle(wall.startPoint, pos, 45)
-                                        : pos;
-                                    updateWall(wall.id, { endPoint: next });
+                                    updateWall(wall.id, { endPoint: { x: e.target.x(), y: e.target.y() } });
                                 }}
                             />
                         </>
@@ -1482,12 +1795,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                     }}
                     onDragMove={(e) => {
                         e.cancelBubble = true;
-                        // Snap to grid during drag
-                        if (drawingState.gridSnap) {
-                            const gridSize = drawingState.gridSize;
-                            e.target.x(Math.round(e.target.x() / gridSize) * gridSize);
-                            e.target.y(Math.round(e.target.y() / gridSize) * gridSize);
-                        }
+
                     }}
                     onDragEnd={(e) => {
                         e.cancelBubble = true;
@@ -1523,30 +1831,185 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                                 />
                             </>
                         ) : (
-                            <Group>
-                                {/* Fallback for missing icons */}
-                                <Circle
-                                    radius={def.size.width / 2}
-                                    fill={theme === 'dark' ? '#374151' : '#fff'}
-                                    stroke={isSelected ? '#3b82f6' : colors.border}
-                                    strokeWidth={isSelected ? 2 : 1}
-                                />
-                                <Text
-                                    x={-def.size.width / 2}
-                                    y={-8}
-                                    width={def.size.width}
-                                    text={def.symbol}
-                                    fontSize={14}
-                                    fill={theme === 'dark' ? '#fff' : '#333'}
-                                    align="center"
-                                />
-                            </Group>
+                            /* Fallback: just show symbol text, no background circle */
+                            <Text
+                                x={-def.size.width / 2}
+                                y={-8}
+                                width={def.size.width}
+                                text={def.symbol}
+                                fontSize={16}
+                                fontStyle="bold"
+                                fill={isSelected ? '#3b82f6' : (theme === 'dark' ? '#e5e7eb' : '#374151')}
+                                align="center"
+                            />
                         )}
                 </Group >
             );
         });
     };
 
+    // Render Magic Wires - AutoCAD-style connection visualization from SLD connectors
+    // Shows curved dashed lines between linked Layout components
+    const renderMagicWires = () => {
+        if (!showMagicWires || magicWires.length === 0) return null;
+
+        // Calculate canvas center for smart arc direction
+        const canvasCenter = currentPlan ? {
+            x: currentPlan.width / 2,
+            y: currentPlan.height / 2
+        } : { x: 500, y: 500 };
+
+        // Track wires by source for fanning effect
+        const sourceWireCount = new Map<string, number>();
+        const sourceWireIndex = new Map<string, number>();
+
+        // First pass: count wires per source
+        magicWires.forEach(wire => {
+            const key = `${Math.round(wire.sourcePos.x)}-${Math.round(wire.sourcePos.y)}`;
+            sourceWireCount.set(key, (sourceWireCount.get(key) || 0) + 1);
+        });
+
+        return magicWires.map((wire, globalIndex) => {
+            const { sourcePos, targetPos, key } = wire;
+
+            // Calculate basic geometry
+            const midX = (sourcePos.x + targetPos.x) / 2;
+            const midY = (sourcePos.y + targetPos.y) / 2;
+            const dx = targetPos.x - sourcePos.x;
+            const dy = targetPos.y - sourcePos.y;
+            const len = Math.sqrt(dx * dx + dy * dy);
+
+            if (len < 5) {
+                // Skip very short/zero-length wires
+                return null;
+            }
+
+            // Get source grouping info for fanning
+            const sourceKey = `${Math.round(sourcePos.x)}-${Math.round(sourcePos.y)}`;
+            const totalFromSource = sourceWireCount.get(sourceKey) || 1;
+            const indexInSource = sourceWireIndex.get(sourceKey) || 0;
+            sourceWireIndex.set(sourceKey, indexInSource + 1);
+
+            // Calculate perpendicular unit vectors (two possible directions)
+            const perpX1 = -dy / len;
+            const perpY1 = dx / len;
+            const perpX2 = dy / len;
+            const perpY2 = -dx / len;
+
+            // SMART DIRECTION SELECTION:
+            // 1. Calculate midpoint distance to canvas center
+            // 2. Check which perpendicular direction goes AWAY from center (more natural)
+            // 3. For multiple wires from same source, alternate/fan directions
+
+            const midToCenter = {
+                x: canvasCenter.x - midX,
+                y: canvasCenter.y - midY
+            };
+
+            // Dot product to see which perpendicular points away from center
+            const dot1 = perpX1 * midToCenter.x + perpY1 * midToCenter.y;
+            const dot2 = perpX2 * midToCenter.x + perpY2 * midToCenter.y;
+
+            // Base direction: prefer the one pointing AWAY from center (negative dot)
+            let baseDirection = dot1 < dot2 ? 1 : -1;
+
+            // For multiple wires from same source, fan them out
+            // Alternate direction for each wire, with slight angular offset
+            if (totalFromSource > 1) {
+                // Spread factor: distribute wires across arc
+                const spreadAngle = Math.PI / 4; // 45 degree spread
+                const angleOffset = ((indexInSource / (totalFromSource - 1)) - 0.5) * spreadAngle;
+
+                // Rotate the perpendicular vector slightly
+                const cosA = Math.cos(angleOffset);
+                const sinA = Math.sin(angleOffset);
+
+                // Apply rotation to perpendicular
+                const rotPerpX = perpX1 * cosA - perpY1 * sinA;
+                const rotPerpY = perpX1 * sinA + perpY1 * cosA;
+
+                // Use direction based on index (odd/even alternate)
+                baseDirection = indexInSource % 2 === 0 ? 1 : -1;
+
+                // Calculate arc bulge - proportional to distance
+                const baseBulge = 0.15 + (indexInSource * 0.05); // Vary bulge per wire
+                const offset = Math.min(Math.max(len * baseBulge, 20), 60);
+
+                // Control point with rotation
+                const cpX = midX + rotPerpX * offset * baseDirection;
+                const cpY = midY + rotPerpY * offset * baseDirection;
+
+                const points = [sourcePos.x, sourcePos.y, cpX, cpY, targetPos.x, targetPos.y];
+
+                return (
+                    <Group key={key}>
+                        {/* Shadow for subtle depth */}
+                        <Line
+                            points={points}
+                            stroke="rgba(100, 116, 139, 0.2)"
+                            strokeWidth={3}
+                            lineCap="round"
+                            lineJoin="round"
+                            tension={0.5}
+                            bezier={true}
+                        />
+                        {/* Main wire */}
+                        <Line
+                            points={points}
+                            stroke="#475569"
+                            strokeWidth={1.2}
+                            lineCap="round"
+                            lineJoin="round"
+                            tension={0.5}
+                            bezier={true}
+                            dash={[6, 4]}
+                        />
+                        {/* Connection dots */}
+                        <Circle x={sourcePos.x} y={sourcePos.y} radius={2.5} fill="#334155" />
+                        <Circle x={targetPos.x} y={targetPos.y} radius={2.5} fill="#334155" />
+                    </Group>
+                );
+            }
+
+            // Single wire from source - use smart direction
+            const baseBulge = 0.18;
+            const offset = Math.min(Math.max(len * baseBulge, 25), 70);
+
+            const cpX = midX + perpX1 * offset * baseDirection;
+            const cpY = midY + perpY1 * offset * baseDirection;
+
+            const points = [sourcePos.x, sourcePos.y, cpX, cpY, targetPos.x, targetPos.y];
+
+            return (
+                <Group key={key}>
+                    {/* Shadow for subtle depth */}
+                    <Line
+                        points={points}
+                        stroke="rgba(100, 116, 139, 0.2)"
+                        strokeWidth={3}
+                        lineCap="round"
+                        lineJoin="round"
+                        tension={0.5}
+                        bezier={true}
+                    />
+                    {/* Main wire */}
+                    <Line
+                        points={points}
+                        stroke="#475569"
+                        strokeWidth={1.2}
+                        lineCap="round"
+                        lineJoin="round"
+                        tension={0.5}
+                        bezier={true}
+                        dash={[6, 4]}
+                    />
+                    {/* Connection dots */}
+                    <Circle x={sourcePos.x} y={sourcePos.y} radius={2.5} fill="#334155" />
+                    <Circle x={targetPos.x} y={targetPos.y} radius={2.5} fill="#334155" />
+                </Group>
+            );
+        }).filter(Boolean);
+    };
 
 
     // Render current drawing path
@@ -1645,14 +2108,34 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                     sldItemId: data.sldItemId
                 };
 
+                // Mark as in-flight FIRST to prevent race conditions
+                if (stagingId) {
+                    markStagingComponentPlaced(stagingId);
+                }
+
                 // Add the component with its ID preserved
                 addComponentWithId(newComponent);
 
-                // Remove from staging and mark as placed
+                // Clean up staging
                 if (stagingId) {
                     removeStagingComponent(stagingId);
-                    markStagingComponentPlaced(stagingId);
                     console.log('[LayoutCanvas] Staging component placed:', stagingId);
+
+                    // Update the linked SLD item with the Layout component ID (backlink)
+                    if (data.sldItemId) {
+                        try {
+                            const sldStore = useStore.getState();
+                            const sldItem = sldStore.sheets
+                                .flatMap(s => s.canvasItems)
+                                .find(i => i.uniqueID === data.sldItemId);
+                            if (sldItem && !sldItem.properties?.[0]?.['_layoutComponentId']) {
+                                // Note: We don't need to update SLD item here as it should already have _layoutComponentId
+                                // The sync engine sets _layoutComponentId when creating SLD items from Layout
+                            }
+                        } catch (e) {
+                            console.warn('[LayoutCanvas] Failed to check SLD backlink', e);
+                        }
+                    }
                 }
             }
         } catch (error) {
@@ -1731,10 +2214,13 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                     )}
 
                     {/* Grid */}
-                    {drawingState.gridSnap && renderGrid()}
+
 
                     {/* Rooms */}
                     {renderRooms()}
+
+                    {/* Magic Wires - AutoCAD-style SLD connection overlay */}
+                    {renderMagicWires()}
 
                     {/* Unselected Layers (Bottom) */}
                     {renderWalls(false)}
@@ -1750,8 +2236,36 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                     {renderConnections(true)}
                     {renderComponents(true)}
 
+                    {renderOcrOverlay()}
+
                     {/* Window Handles (Always Top) */}
                     {renderWindowHandles()}
+
+                    {/* Calibration Line */}
+                    {drawingState.activeTool === 'calibrate' && isDrawing && currentPath.length > 0 && (
+                        <Group>
+                            <Line
+                                points={currentPath.flatMap(p => [p.x, p.y])}
+                                stroke="#ef4444"
+                                strokeWidth={2}
+                                dash={[10, 5]}
+                            />
+                            <Circle
+                                x={currentPath[0].x}
+                                y={currentPath[0].y}
+                                radius={4}
+                                fill="#ef4444"
+                            />
+                            {currentPath.length > 1 && (
+                                <Circle
+                                    x={currentPath[currentPath.length - 1].x}
+                                    y={currentPath[currentPath.length - 1].y}
+                                    radius={4}
+                                    fill="#ef4444"
+                                />
+                            )}
+                        </Group>
+                    )}
 
                     {/* Current drawing path */}
                     {renderDrawingPath()}
@@ -1830,6 +2344,109 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                     }}
                 >
                     {hoverInfo.text}
+                </div>
+            )}
+
+            {ocrHoverInfo && (
+                <div
+                    className="absolute z-50 pointer-events-none px-2 py-1 bg-black/80 text-white text-xs rounded border border-white/20 shadow-xl backdrop-blur-sm"
+                    style={{
+                        top: ocrHoverInfo.y,
+                        left: ocrHoverInfo.x
+                    }}
+                >
+                    {ocrHoverInfo.text}
+                </div>
+            )}
+
+            {currentPlan?.ocr?.enabled && (
+                <div
+                    className="absolute top-12 right-3 z-40 rounded-lg border shadow-lg p-3 w-[280px]"
+                    style={{
+                        backgroundColor: colors.panelBackground,
+                        borderColor: colors.border,
+                        color: colors.text
+                    }}
+                >
+                    <div className="flex items-center justify-between mb-2">
+                        <div className="text-xs font-semibold">OCR Labels</div>
+                        <button
+                            className="text-xs px-2 py-1 rounded hover:bg-black/10 dark:hover:bg-white/10"
+                            onClick={() => setShowOcr(!showOcr)}
+                        >
+                            {showOcr ? 'Hide' : 'Show'}
+                        </button>
+                    </div>
+
+                    <div className="space-y-2">
+                        <div>
+                            <div className="flex items-center justify-between text-[11px] opacity-80 mb-1">
+                                <span>Min confidence</span>
+                                <span className="font-mono">{ocrMinConfidence}%</span>
+                            </div>
+                            <input
+                                type="range"
+                                min={0}
+                                max={100}
+                                value={ocrMinConfidence}
+                                onChange={(e) => setOcrMinConfidence(parseInt(e.target.value, 10) || 0)}
+                                className="w-full"
+                            />
+                        </div>
+
+                        <div>
+                            <div className="text-[11px] opacity-80 mb-1">Search</div>
+                            <input
+                                value={ocrQuery}
+                                onChange={(e) => setOcrQuery(e.target.value)}
+                                placeholder="e.g. DB, KITCHEN, 12A"
+                                className="w-full px-2 py-1 rounded border text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
+                                style={{
+                                    backgroundColor: colors.canvasBackground,
+                                    borderColor: colors.border,
+                                    color: colors.text
+                                }}
+                            />
+                        </div>
+
+                        <label className="flex items-center gap-2 text-xs select-none">
+                            <input
+                                type="checkbox"
+                                checked={showOcrBoxes}
+                                onChange={(e) => setShowOcrBoxes(e.target.checked)}
+                            />
+                            Show bounding boxes
+                        </label>
+
+                        <button
+                            className={`w-full text-xs px-2 py-1 rounded border transition-colors ${ocrCopied ? 'bg-green-500/15 text-green-600 dark:text-green-400 border-green-500/30' : 'hover:bg-black/10 dark:hover:bg-white/10'}`}
+                            style={{ borderColor: colors.border, color: ocrCopied ? undefined : colors.text }}
+                            onClick={async () => {
+                                try {
+                                    const payload = {
+                                        ...currentPlan.ocr,
+                                        items: currentPlan.ocr?.items || []
+                                    };
+                                    await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+                                    setOcrCopied(true);
+                                    window.setTimeout(() => setOcrCopied(false), 1200);
+                                } catch {
+                                }
+                            }}
+                        >
+                            {ocrCopied ? 'Copied OCR JSON' : 'Copy OCR JSON'}
+                        </button>
+
+                        <div className="text-[11px] opacity-70">
+                            Showing {showOcr ? visibleOcrItems.length : 0} / {filteredOcrItems.length} labels
+                        </div>
+
+                        {currentPlan?.ocr?.orientation && (
+                            <div className="text-[11px] opacity-70">
+                                Orientation: {currentPlan.ocr.orientation.rotate_degrees ?? currentPlan.ocr.orientation.orientation_degrees ?? 'n/a'}°
+                            </div>
+                        )}
+                    </div>
                 </div>
             )}
         </div>

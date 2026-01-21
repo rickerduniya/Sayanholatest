@@ -1,21 +1,20 @@
 // Drawing tools and helper functions for floor plan manual editing
 
 import { Point } from '../types';
-import { Wall, Room, Door, LayoutWindow, DrawingTool } from '../types/layout';
+import { Wall, Room, Door, LayoutWindow, DrawingTool, MeasurementUnit } from '../types/layout';
+
+const FEET_PER_METER = 3.280839895013123;
+const INCHES_PER_FOOT = 12;
+const SQFT_PER_SQM = 10.763910416709722;
 
 // ============================================================================
 // Grid and Snapping
 // ============================================================================
 
 /**
- * Snap a point to the nearest grid intersection
+ * Snap a point to the nearest grid intersection - DEPRECATED/REMOVED
  */
-export function snapToGrid(point: Point, gridSize: number): Point {
-    return {
-        x: Math.round(point.x / gridSize) * gridSize,
-        y: Math.round(point.y / gridSize) * gridSize
-    };
-}
+// Grid system removed as per user request
 
 /**
  * Find the closest point on a wall segment to the given point
@@ -175,6 +174,16 @@ export function calculateRoomArea(room: Room): number {
     return Math.abs(area) / 2;
 }
 
+export function getAreaLabel(squarePixels: number, pixelsPerMeter: number = 50, unit: MeasurementUnit = 'm'): string {
+    if (pixelsPerMeter <= 0) return '';
+    const squareMeters = squarePixels / (pixelsPerMeter * pixelsPerMeter);
+    if (unit === 'ft') {
+        const squareFeet = squareMeters * SQFT_PER_SQM;
+        return `${squareFeet.toFixed(2)} sq.ft`;
+    }
+    return `${squareMeters.toFixed(2)} sq.mt`;
+}
+
 /**
  * Check if a point is inside a room polygon
  * Uses ray casting algorithm
@@ -276,7 +285,8 @@ export const DRAWING_TOOL_CURSORS: Record<DrawingTool, string> = {
     component: 'copy',
     connection: 'crosshair',
     erase: 'not-allowed',
-    pick: 'crosshair'
+    pick: 'crosshair',
+    calibrate: 'crosshair'
 };
 
 export const DRAWING_TOOL_INSTRUCTIONS: Record<DrawingTool, string> = {
@@ -290,7 +300,8 @@ export const DRAWING_TOOL_INSTRUCTIONS: Record<DrawingTool, string> = {
     component: 'Click to place component',
     connection: 'Click source, then click target to connect',
     erase: 'Click elements to delete them',
-    pick: 'Click to pick properties from element'
+    pick: 'Click to pick properties from element',
+    calibrate: 'Draw a line of known length to calibrate scale'
 };
 
 // ============================================================================
@@ -311,8 +322,21 @@ export function generateLayoutId(prefix: string = 'layout'): string {
  * @param scale Pixels per meter (default 50 or read from plan)
  */
 export function getDistanceLabel(pixels: number, scale: number = 50): string {
-    if (scale <= 0) return '';
-    const meters = pixels / scale;
+    return getDistanceLabelWithUnit(pixels, scale, 'm');
+}
+
+export function getDistanceLabelWithUnit(pixels: number, pixelsPerMeter: number = 50, unit: MeasurementUnit = 'm'): string {
+    if (pixelsPerMeter <= 0) return '';
+    const meters = pixels / pixelsPerMeter;
+
+    if (unit === 'ft') {
+        const feet = meters * FEET_PER_METER;
+        if (feet < 1) {
+            return `${Math.round(feet * INCHES_PER_FOOT)} in`;
+        }
+        return `${feet.toFixed(2)} ft`;
+    }
+
     if (meters < 1) {
         return `${Math.round(meters * 100)} cm`;
     }

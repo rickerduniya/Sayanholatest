@@ -8,7 +8,6 @@ import {
     Pencil,
     Square,
     DoorOpen,
-    LayoutGrid,
     Trash2,
     Undo2,
     Redo2,
@@ -125,7 +124,6 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
     const {
         setActiveTool,
         drawingState,
-        setGridSnap,
         setWallThickness,
         setContinuousWallMode,
         undo,
@@ -156,14 +154,19 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
         try {
             takeSnapshot();
             const { FloorplanApiService } = await import('../services/FloorplanApiService');
+
+            // Pass OCR items to enrich room names
+            const ocrItems = plan.ocr?.items || [];
+
             const rooms = FloorplanApiService.detectRoomsFromPlan({
                 width: plan.width,
                 height: plan.height,
                 walls: plan.walls,
                 doors: plan.doors,
                 windows: plan.windows
-            });
-            console.error('[Detect Rooms] rooms detected:', rooms.length);
+            }, ocrItems);
+
+            console.error('[Detect Rooms] rooms detected:', rooms.length, 'with OCR items:', ocrItems.length);
             updateFloorPlan(plan.id, { rooms });
         } catch (e) {
             console.error('[Detect Rooms] failed', e);
@@ -262,6 +265,7 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                         <ToolButton
                             icon={<Ruler size={16} />}
                             label="Calibrate Scale"
+                            active={activeTool === 'calibrate'}
                             onClick={() => onScaleCalibrate()}
                         />
                     )}
@@ -273,16 +277,6 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                         variant={showMagicWires ? 'success' : 'default'}
                     />
                 </div>
-
-                <Divider />
-
-                <ToolButton
-                    icon={<LayoutGrid size={16} />}
-                    label={`Grid Snap: ${drawingState.gridSnap ? 'ON' : 'OFF'}`}
-                    shortcut="G"
-                    active={drawingState.gridSnap}
-                    onClick={() => setGridSnap(!drawingState.gridSnap)}
-                />
 
                 <Divider />
 

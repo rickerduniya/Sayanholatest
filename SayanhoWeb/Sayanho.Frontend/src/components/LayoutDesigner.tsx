@@ -34,7 +34,8 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
         pasteSelection,
         deleteSelected,
         undo,
-        redo
+        redo,
+        setActiveTool
     } = useLayoutStore();
 
     // SLD store for sync
@@ -46,6 +47,7 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
     const [syncStatus, setSyncStatus] = useState<'idle' | 'syncing' | 'success' | 'error'>('idle');
     const [syncMessage, setSyncMessage] = useState('');
     const [showMagicWires, setShowMagicWires] = useState(true);
+    const [measuredPixels, setMeasuredPixels] = useState<number | undefined>(undefined);
 
     // Keyboard shortcuts
     React.useEffect(() => {
@@ -177,7 +179,7 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
     // Sync SLD to Layout (Reverse Sync) - Populates Layout Staging
     // We check this on mount or when SLD sheet items change significantly?
     // For now, let's do it on effect when we enter this view.
-    const { setStagingComponents, stagingComponents: layoutStaging } = useLayoutStore();
+    const { setStagingComponents } = useLayoutStore();
 
     React.useEffect(() => {
         if (!currentPlan) return;
@@ -191,30 +193,38 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
         try {
             const stagedItems = syncEngine.syncSldToLayout(currentPlan, sldComponents);
 
+            // Get current state directly to avoid dependency loop
+            const layoutState = useLayoutStore.getState();
+            const currentLayoutStaging = layoutState.stagingComponents;
+            const placedStagingIds = layoutState.placedStagingComponentIds;
+
             const placedSldIds = new Set(
-                useLayoutStore.getState().floorPlans.flatMap(p => p.components.map(c => c.sldItemId)).filter(Boolean) as string[]
+                layoutState.floorPlans.flatMap(p => p.components.map(c => c.sldItemId)).filter(Boolean) as string[]
             );
             const placedLayoutIds = new Set(
-                useLayoutStore.getState().floorPlans.flatMap(p => p.components.map(c => c.id))
+                layoutState.floorPlans.flatMap(p => p.components.map(c => c.id))
             );
 
-            // Filter out items already in layoutStaging to avoid duplicates
-            // syncSldToLayout checks against currentPlan, but not against existing staging
+            // Filter out items already in staging or placed to avoid duplicates
             const newItems = stagedItems.filter(staged => {
                 const sldId = staged.sldItemId;
+                // Skip if SLD item is already placed in Layout
                 if (sldId && placedSldIds.has(sldId)) return false;
+                // Skip if layout component ID is already placed
                 if (placedLayoutIds.has(staged.id)) return false;
-                return !layoutStaging.some(existing => existing.sldItemId === staged.sldItemId);
+                // Skip if this staging item was already placed
+                if (placedStagingIds.has(staged.id)) return false;
+                // Skip if already in current staging
+                return !currentLayoutStaging.some(existing => existing.sldItemId === staged.sldItemId);
             });
 
             if (newItems.length > 0) {
-                setStagingComponents([...layoutStaging, ...newItems]);
-                // console.log(`[Layout] Synced ${newItems.length} items from SLD to Staging`);
+                setStagingComponents([...currentLayoutStaging, ...newItems]);
             }
         } catch (e) {
             console.error("Failed to sync SLD to Layout", e);
         }
-    }, [currentPlan, sheets, activeSheetId, setStagingComponents, layoutStaging]);
+    }, [currentPlan, sheets, activeSheetId, setStagingComponents]); // Removed layoutStaging to prevent loop
 
     return (
         <>
@@ -224,6 +234,11 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                     ref={canvasRef}
                     onScaleChange={setScale}
                     showMagicWires={showMagicWires}
+                    onCalibrationFinished={(pixels) => {
+                        setMeasuredPixels(pixels);
+                        setShowScaleCalibration(true);
+                        setActiveTool('select');
+                    }}
                 />
             </div>
 
@@ -235,7 +250,10 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                     onZoomOut={() => canvasRef.current?.zoomOut()}
                     onFitView={() => canvasRef.current?.fitView()}
                     onUploadPlan={() => setShowUploadDialog(true)}
-                    onScaleCalibrate={() => setShowScaleCalibration(true)}
+                    onScaleCalibrate={() => {
+                        setActiveTool('calibrate');
+                        setMeasuredPixels(undefined);
+                    }}
                     showMagicWires={showMagicWires}
                     onToggleMagicWires={() => setShowMagicWires(!showMagicWires)}
                 />
@@ -363,6 +381,7 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
             <ScaleCalibrationDialog
                 isOpen={showScaleCalibration}
                 onClose={() => setShowScaleCalibration(false)}
+                initialPixelDistance={measuredPixels}
             />
         </>
     );

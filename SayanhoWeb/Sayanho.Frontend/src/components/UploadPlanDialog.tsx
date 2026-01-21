@@ -6,7 +6,7 @@ import { layoutImageStore } from '../utils/LayoutImageStore';
 import type { Wall, Door, LayoutWindow, Point, Room, FloorPlan } from '../types/layout';
 import type { DetectedLayout } from '../services/FloorplanApiService';
 import { generateLayoutId } from '../utils/LayoutDrawingTools';
-import { stitchWalls } from '../utils/WallStitching';
+
 
 interface WallMatch {
     wall: Wall;
@@ -109,7 +109,12 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
                 try {
                     const { FloorplanApiService } = await import('../services/FloorplanApiService');
                     // We need to pass the raw File object to the API
-                    detectedData = await FloorplanApiService.detectLayout(selectedFile, img.width, img.height);
+                    detectedData = await FloorplanApiService.detectLayout(selectedFile, img.width, img.height, {
+                        enableOcr: true,
+                        ocrLang: 'eng',
+                        ocrPsm: 6,
+                        ocrScale: 1.5
+                    });
 
                     const dbg = FloorplanApiService.getLastDebugInfo?.();
                     if (dbg) {
@@ -151,24 +156,15 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
 
             // Prepare entities from detected data
             // Clone the original walls for preservation
-            const rawWalls: Wall[] = (detectedData?.walls || []).map(w => ({ ...w }));
-            let processedWalls: Wall[] = [...rawWalls];
+            // Clone the original walls for preservation
+            const rawWalls: Wall[] = (detectedData?.originalWalls || []).map(w => ({ ...w }));
+            // Use stitched walls directly from API
+            const processedWalls: Wall[] = (detectedData?.walls || []).map(w => ({ ...w }));
 
             const doors: Door[] = detectedData?.doors || [];
             const windows: LayoutWindow[] = detectedData?.windows || [];
             const rooms: Room[] = detectedData?.rooms || [];
-
-            // =================================================================
-            // POST-PROCESSING: MAX EFFORT WALL STITCHING
-            // =================================================================
-            if (rawWalls.length > 0 && (doors.length > 0 || windows.length > 0)) {
-                try {
-                    processedWalls = stitchWalls(rawWalls, doors, windows, img.width, img.height);
-                } catch (e) {
-                    console.error("Auto-stitch failed", e);
-                    processedWalls = rawWalls; // Fallback
-                }
-            }
+            const ocr = detectedData?.ocr;
 
             // Create or update floor plan
             const currentPlan = getCurrentFloorPlan();
@@ -182,7 +178,8 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
                     originalWalls: rawWalls, // Save original
                     doors: doors.length > 0 ? [...currentPlan.doors, ...doors] : currentPlan.doors,
                     windows: windows.length > 0 ? [...currentPlan.windows, ...windows] : currentPlan.windows,
-                    rooms: rooms.length > 0 ? [...currentPlan.rooms, ...rooms] : currentPlan.rooms
+                    rooms: rooms.length > 0 ? [...currentPlan.rooms, ...rooms] : currentPlan.rooms,
+                    ocr: ocr || currentPlan.ocr
                 });
                 // TODO: Add doors/windows/rooms to the store for this plan
                 // This requires valid action creators in the store or manual state updates.
@@ -197,12 +194,15 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
                     width: img.width,
                     height: img.height,
                     pixelsPerMeter: 50,
+                    measurementUnit: 'm',
+                    isScaleCalibrated: false,
                     walls: processedWalls,
                     originalWalls: rawWalls,
                     doors,
                     windows,
                     rooms,
                     stairs: [],
+                    ocr,
                     components: [],
                     connections: [],
                     viewportX: 0,

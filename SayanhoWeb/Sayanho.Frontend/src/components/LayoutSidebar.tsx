@@ -162,11 +162,20 @@ export const LayoutSidebar: React.FC = () => {
     const stagingComponents = useLayoutStore(state => state.stagingComponents);
     const allPlacedLayoutIds = useLayoutStore(state => state.floorPlans.flatMap(p => p.components.map(c => c.id)));
     const allPlacedSldIds = useLayoutStore(state => state.floorPlans.flatMap(p => p.components.map(c => c.sldItemId)).filter(Boolean) as string[]);
+    const isStagingComponentPlaced = useLayoutStore(state => state.isStagingComponentPlaced);
     const placedLayoutIdSet = useMemo(() => new Set(allPlacedLayoutIds), [allPlacedLayoutIds]);
     const placedSldIdSet = useMemo(() => new Set(allPlacedSldIds), [allPlacedSldIds]);
     const visibleStagingComponents = useMemo(
-        () => stagingComponents.filter(c => !placedLayoutIdSet.has(c.id) && (!c.sldItemId || !placedSldIdSet.has(c.sldItemId))),
-        [stagingComponents, placedLayoutIdSet, placedSldIdSet]
+        () => stagingComponents.filter(c => {
+            // Hide if layout component is already placed on any floor plan
+            if (placedLayoutIdSet.has(c.id)) return false;
+            // Hide if this staging item was already placed (tracked in placedStagingComponentIds)
+            if (isStagingComponentPlaced(c.id)) return false;
+            // Hide if the linked SLD item is already placed (meaning Layout component was created from it)
+            if (c.sldItemId && placedSldIdSet.has(c.sldItemId)) return false;
+            return true;
+        }),
+        [stagingComponents, placedLayoutIdSet, placedSldIdSet, isStagingComponentPlaced]
     );
 
     return (

@@ -148,22 +148,56 @@ export const useStore = create<StoreState>((set, get) => ({
     isPropertiesPanelOpen: false,
     isChatOpen: false,
 
-    // Staging Items
+    // Staging Items - source of truth is sheets[].canvasItems
+    // stagingItems = items waiting to be placed on SLD canvas
+    // placedStagingIds = guard to prevent double-drops during drag operations
     stagingItems: [],
     placedStagingIds: new Set<string>(),
+
+    // setStagingItems: Filter out any items that are already on the canvas (source of truth)
     setStagingItems: (items) => set((state) => {
-        const placedIds = new Set(state.sheets.flatMap(s => s.canvasItems).map(i => i.uniqueID));
-        return { stagingItems: items.filter(i => !placedIds.has(i.uniqueID)) };
+        // Build set of all item IDs currently on any canvas sheet
+        const canvasItemIds = new Set(state.sheets.flatMap(s => s.canvasItems.map(i => i.uniqueID)));
+        // Also build set of _layoutComponentId links (to handle items with different SLD IDs but same Layout link)
+        const canvasLayoutIds = new Set(
+            state.sheets.flatMap(s => s.canvasItems
+                .map(i => i.properties?.[0]?.['_layoutComponentId'])
+                .filter(Boolean)
+            )
+        );
+
+        return {
+            stagingItems: items.filter(item => {
+                // Already on canvas by ID?
+                if (canvasItemIds.has(item.uniqueID)) return false;
+                // Already on canvas by Layout link?
+                const itemLayoutId = item.properties?.[0]?.['_layoutComponentId'];
+                if (itemLayoutId && canvasLayoutIds.has(itemLayoutId)) return false;
+                return true;
+            })
+        };
     }),
+
     removeStagingItem: (id) => set((state) => ({
         stagingItems: state.stagingItems.filter(i => i.uniqueID !== id)
     })),
+
+    // Mark an item as "in-flight" during drag to prevent double-drops
     markStagingItemPlaced: (id) => set((state) => {
         const newSet = new Set(state.placedStagingIds);
         newSet.add(id);
         return { placedStagingIds: newSet };
     }),
-    isStagingItemPlaced: (id) => get().placedStagingIds.has(id) || get().sheets.some(s => s.canvasItems.some(i => i.uniqueID === id)),
+
+    // Check if item is already placed (on canvas) or in-flight (being dragged)
+    isStagingItemPlaced: (id) => {
+        const state = get();
+        // Check if already on any canvas sheet (source of truth)
+        if (state.sheets.some(s => s.canvasItems.some(i => i.uniqueID === id))) return true;
+        // Check if marked as in-flight during drag
+        if (state.placedStagingIds.has(id)) return true;
+        return false;
+    },
 
     settings: {
         maxVoltageDropPercentage: 7.0,

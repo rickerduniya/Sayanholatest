@@ -5,15 +5,18 @@ import React, { useState, useEffect } from 'react';
 import { X, Ruler, Check, RotateCcw } from 'lucide-react';
 import { useTheme } from '../context/ThemeContext';
 import { useLayoutStore } from '../store/useLayoutStore';
+import type { MeasurementUnit } from '../types/layout';
 
 interface ScaleCalibrationDialogProps {
     isOpen: boolean;
     onClose: () => void;
+    initialPixelDistance?: number;
 }
 
 export const ScaleCalibrationDialog: React.FC<ScaleCalibrationDialogProps> = ({
     isOpen,
-    onClose
+    onClose,
+    initialPixelDistance
 }) => {
     const { colors, theme } = useTheme();
     const { getCurrentFloorPlan, updateFloorPlan } = useLayoutStore();
@@ -21,9 +24,22 @@ export const ScaleCalibrationDialog: React.FC<ScaleCalibrationDialogProps> = ({
     const currentPlan = getCurrentFloorPlan();
 
     const [knownDistance, setKnownDistance] = useState('1');
-    const [unit, setUnit] = useState<'m' | 'ft'>('m');
-    const [pixelDistance, setPixelDistance] = useState('100');
+    const [unit, setUnit] = useState<MeasurementUnit>('m');
+    const [pixelDistance, setPixelDistance] = useState(initialPixelDistance?.toString() || '100');
     const [calibrated, setCalibrated] = useState(false);
+
+    useEffect(() => {
+        if (isOpen && initialPixelDistance) {
+            setPixelDistance(initialPixelDistance.toString());
+        }
+    }, [isOpen, initialPixelDistance]);
+
+    useEffect(() => {
+        if (!isOpen) return;
+        if (currentPlan?.measurementUnit) {
+            setUnit(currentPlan.measurementUnit);
+        }
+    }, [isOpen, currentPlan?.measurementUnit]);
 
     // Calculate pixels per meter
     const calculatePixelsPerMeter = (): number => {
@@ -40,7 +56,17 @@ export const ScaleCalibrationDialog: React.FC<ScaleCalibrationDialogProps> = ({
         if (!currentPlan) return;
 
         const ppm = calculatePixelsPerMeter();
-        updateFloorPlan(currentPlan.id, { pixelsPerMeter: ppm });
+        console.log('[ScaleCalibration] Apply', {
+            planId: currentPlan.id,
+            pixelsPerMeter: ppm,
+            measurementUnit: unit,
+            isScaleCalibrated: true
+        });
+        updateFloorPlan(currentPlan.id, {
+            pixelsPerMeter: ppm,
+            measurementUnit: unit,
+            isScaleCalibrated: true
+        });
         setCalibrated(true);
 
         // Reset after showing success
@@ -52,9 +78,14 @@ export const ScaleCalibrationDialog: React.FC<ScaleCalibrationDialogProps> = ({
 
     const handleReset = () => {
         if (!currentPlan) return;
-        updateFloorPlan(currentPlan.id, { pixelsPerMeter: 50 }); // Default value
+        updateFloorPlan(currentPlan.id, {
+            pixelsPerMeter: 50,
+            measurementUnit: 'm',
+            isScaleCalibrated: false
+        }); // Default value
         setKnownDistance('1');
         setPixelDistance('100');
+        setUnit('m');
     };
 
     // Calculate example measurements
@@ -113,7 +144,7 @@ export const ScaleCalibrationDialog: React.FC<ScaleCalibrationDialogProps> = ({
                             />
                             <select
                                 value={unit}
-                                onChange={(e) => setUnit(e.target.value as 'm' | 'ft')}
+                                onChange={(e) => setUnit(e.target.value as MeasurementUnit)}
                                 className="px-4 py-2 rounded-lg text-sm bg-white/10 border border-white/20 focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 style={{ color: colors.text }}
                             >

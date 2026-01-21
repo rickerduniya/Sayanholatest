@@ -32,10 +32,30 @@ const getItemCategory = (name: string): string => {
 };
 
 export const Sidebar = () => {
-    const { addItem, sheets, activeSheetId, stagingItems, removeStagingItem } = useStore();
+    const { addItem, sheets, activeSheetId, stagingItems, removeStagingItem, isStagingItemPlaced } = useStore();
     const currentSheet = sheets.find(s => s.sheetId === activeSheetId);
-    const placedIds = useMemo(() => new Set(sheets.flatMap(s => s.canvasItems).map(i => i.uniqueID)), [sheets]);
-    const visibleStagingItems = useMemo(() => stagingItems.filter(i => !placedIds.has(i.uniqueID)), [stagingItems, placedIds]);
+
+    // Build lookup sets for efficient visibility filtering
+    const placedIds = useMemo(() => new Set(sheets.flatMap(s => s.canvasItems.map(i => i.uniqueID))), [sheets]);
+    const placedLayoutIds = useMemo(() => new Set(
+        sheets.flatMap(s => s.canvasItems
+            .map(i => i.properties?.[0]?.['_layoutComponentId'])
+            .filter(Boolean)
+        )
+    ), [sheets]);
+
+    // Filter staging items to show only unplaced ones
+    // Source of truth: check against actual canvas items
+    const visibleStagingItems = useMemo(() => stagingItems.filter(item => {
+        // Skip if already on canvas by uniqueID
+        if (placedIds.has(item.uniqueID)) return false;
+        // Skip if already on canvas by _layoutComponentId link
+        const itemLayoutId = item.properties?.[0]?.['_layoutComponentId'];
+        if (itemLayoutId && placedLayoutIds.has(itemLayoutId)) return false;
+        // Extra safety: check isStagingItemPlaced (includes in-flight guard)
+        if (isStagingItemPlaced(item.uniqueID)) return false;
+        return true;
+    }), [stagingItems, placedIds, placedLayoutIds, isStagingItemPlaced]);
     const [items, setItems] = useState<ItemData[]>([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [selectedItem, setSelectedItem] = useState<string | null>(null);

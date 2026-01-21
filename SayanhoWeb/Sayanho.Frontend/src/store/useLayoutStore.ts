@@ -16,7 +16,7 @@ import {
     LayoutComponentType
 } from '../types/layout';
 import { generateLayoutId } from '../utils/LayoutDrawingTools';
-import { stitchWalls } from '../utils/WallStitching';
+import { stitchWalls, remapAttachedItems } from '../utils/WallStitching';
 
 type LayoutSnapshot = {
     floorPlans: FloorPlan[];
@@ -68,9 +68,6 @@ interface LayoutStoreState {
     // Drawing tool actions
     setActiveTool: (tool: DrawingTool) => void;
     setSelectedComponentType: (type: LayoutComponentType | undefined) => void;
-    setGridSnap: (enabled: boolean) => void;
-    setGridSize: (size: number) => void;
-    setGridSpacingMeters: (meters: number) => void;
     setWallThickness: (thickness: number) => void;
     setContinuousWallMode: (enabled: boolean) => void;
 
@@ -159,6 +156,8 @@ const createDefaultFloorPlan = (id?: string): FloorPlan => ({
     width: 2000,
     height: 1500,
     pixelsPerMeter: 50,
+    measurementUnit: 'm',
+    isScaleCalibrated: false,
     walls: [],
     rooms: [],
     doors: [],
@@ -177,9 +176,6 @@ const createDefaultDrawingState = (): DrawingState => ({
     isDrawing: false,
     currentPath: [],
     selectedElementIds: [],
-    gridSnap: true,
-    gridSize: 20,
-    gridSpacingMeters: 0.5,
     wallThickness: 10,
     continuousWallMode: false // Default to single line as requested
 });
@@ -224,17 +220,24 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
 
         takeSnapshot();
         const plan = floorPlans.find(fp => fp.id === activeFloorPlanId);
-        if (!plan || !plan.originalWalls) return;
+        if (!plan) return;
 
-        // Re-run stitching on original walls
-        const stitched = stitchWalls(plan.originalWalls, plan.doors, plan.windows, plan.width, plan.height);
+        // Re-run stitching on CURRENT walls (to preserve modifications)
+        // NOTE: We pass empty arrays for doors/windows to stitchWalls because we handle remapping separately below
+        const stitchedWalls = stitchWalls(plan.walls, [], [], plan.width, plan.height);
+
+        // Remap attached items (Doors/Windows) to new stitched walls
+        const remappedDoors = remapAttachedItems(plan.doors, stitchedWalls);
+        const remappedWindows = remapAttachedItems(plan.windows, stitchedWalls);
 
         set({
             floorPlans: floorPlans.map(fp => {
                 if (fp.id !== activeFloorPlanId) return fp;
                 return {
                     ...fp,
-                    walls: stitched
+                    walls: stitchedWalls,
+                    doors: remappedDoors,
+                    windows: remappedWindows
                 };
             })
         });
@@ -292,18 +295,6 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
 
     setSelectedComponentType: (type) => set((state) => ({
         drawingState: { ...state.drawingState, selectedComponentType: type }
-    })),
-
-    setGridSnap: (enabled) => set((state) => ({
-        drawingState: { ...state.drawingState, gridSnap: enabled }
-    })),
-
-    setGridSize: (size) => set((state) => ({
-        drawingState: { ...state.drawingState, gridSize: size }
-    })),
-
-    setGridSpacingMeters: (meters) => set((state) => ({
-        drawingState: { ...state.drawingState, gridSpacingMeters: meters }
     })),
 
     setWallThickness: (thickness) => set((state) => ({
@@ -524,22 +515,51 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
         });
     },
 
-    // Staging actions
+    // Staging actions - source of truth is floorPlans[].components
+    // stagingComponents = components waiting to be placed on Layout canvas
+    // placedStagingComponentIds = guard to prevent double-drops during drag operations
     stagingComponents: [],
     placedStagingComponentIds: new Set<string>(),
+
+    // setStagingComponents: Filter out any components already on floor plans (source of truth)
     setStagingComponents: (components) => set((state) => {
+        // Build sets of all IDs currently placed on any floor plan
         const placedLayoutIds = new Set(state.floorPlans.flatMap(p => p.components.map(c => c.id)));
-        return { stagingComponents: components.filter(c => !placedLayoutIds.has(c.id)) };
+        const placedSldIds = new Set(
+            state.floorPlans.flatMap(p => p.components.map(c => c.sldItemId).filter(Boolean)) as string[]
+        );
+
+        return {
+            stagingComponents: components.filter(comp => {
+                // Already placed by component ID?
+                if (placedLayoutIds.has(comp.id)) return false;
+                // Already placed by linked SLD ID?
+                if (comp.sldItemId && placedSldIds.has(comp.sldItemId)) return false;
+                return true;
+            })
+        };
     }),
+
     removeStagingComponent: (id) => set((state) => ({
         stagingComponents: state.stagingComponents.filter(c => c.id !== id)
     })),
+
+    // Mark a component as "in-flight" during drag to prevent double-drops
     markStagingComponentPlaced: (id) => set((state) => {
         const newSet = new Set(state.placedStagingComponentIds);
         newSet.add(id);
         return { placedStagingComponentIds: newSet };
     }),
-    isStagingComponentPlaced: (id) => get().placedStagingComponentIds.has(id) || get().floorPlans.some(p => p.components.some(c => c.id === id)),
+
+    // Check if component is already placed (on floor plan) or in-flight (being dragged)
+    isStagingComponentPlaced: (id) => {
+        const state = get();
+        // Check if already on any floor plan (source of truth)
+        if (state.floorPlans.some(p => p.components.some(c => c.id === id))) return true;
+        // Check if marked as in-flight during drag
+        if (state.placedStagingComponentIds.has(id)) return true;
+        return false;
+    },
 
     // Component actions
     addComponent: (component) => {

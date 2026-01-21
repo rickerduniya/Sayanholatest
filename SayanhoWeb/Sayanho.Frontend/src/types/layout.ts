@@ -21,6 +21,10 @@ export interface Room {
     polygon: Point[];           // Closed polygon defining room boundary
     type: RoomType;
     color?: string;             // Fill color for visualization
+    detectedName?: string;      // Name detected via OCR
+    detectedMeasurements?: string; // Measurements text detected via OCR
+    ocrDimensions?: { lengthFt: number; widthFt: number }; // Parsed dimensions in feet
+    ocrArea?: number;            // Area in sq.ft calculated from OCR dimensions
 }
 
 export type RoomType =
@@ -34,7 +38,12 @@ export type RoomType =
     | 'staircase'
     | 'utility'
     | 'office'
+    | 'dining'
+    | 'storage'
+    | 'pooja'
     | 'other';
+
+export type MeasurementUnit = 'm' | 'ft';
 
 export interface Door {
     id: string;
@@ -59,6 +68,39 @@ export interface Stair {
     polygon: Point[];
     direction: 'up' | 'down';
     steps: number;
+}
+
+export interface OcrBBox {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+}
+
+export interface OcrOrientation {
+    orientation_degrees?: number | null;
+    rotate_degrees?: number | null;
+    orientation_confidence?: number | null;
+    script?: string;
+    script_confidence?: number | null;
+    raw?: string;
+    error?: string;
+}
+
+export interface OcrItem {
+    id: string;
+    text: string;
+    confidence?: number | null;
+    bbox: OcrBBox;
+    center: Point;
+}
+
+export interface OcrResult {
+    enabled: boolean;
+    text?: string;
+    orientation?: OcrOrientation;
+    items?: OcrItem[];
+    error?: string;
 }
 
 // ============================================================================
@@ -206,6 +248,9 @@ export interface FloorPlan {
     // Scale: pixels per meter (for real-world measurements)
     pixelsPerMeter: number;
 
+    measurementUnit?: MeasurementUnit;
+    isScaleCalibrated?: boolean;
+
     // Detected/drawn elements
     walls: Wall[];
     originalWalls?: Wall[]; // Stores original API detection for reset/toggle
@@ -213,6 +258,8 @@ export interface FloorPlan {
     doors: Door[];
     windows: LayoutWindow[];
     stairs: Stair[];
+
+    ocr?: OcrResult;
 
     // Electrical layout
     components: LayoutComponent[];
@@ -239,7 +286,8 @@ export type DrawingTool =
     | 'component'
     | 'connection'
     | 'erase'
-    | 'pick';
+    | 'pick'
+    | 'calibrate';
 
 export interface DrawingState {
     activeTool: DrawingTool;
@@ -247,9 +295,6 @@ export interface DrawingState {
     isDrawing: boolean;
     currentPath: Point[];
     selectedElementIds: string[];
-    gridSnap: boolean;
-    gridSize: number;           // pixels (Legacy)
-    gridSpacingMeters: number;  // Meters (New standard)
     wallThickness: number;      // pixels
     continuousWallMode: boolean;// true for chain, false for single segment
 }
