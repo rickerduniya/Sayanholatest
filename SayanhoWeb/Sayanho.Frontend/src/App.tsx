@@ -24,6 +24,7 @@ import { useStore } from './store/useStore';
 import { useTheme } from './context/ThemeContext';
 import { apiTracer } from './utils/apiTracer';
 import { updateItemVisuals } from './utils/SvgUpdater';
+import { applyAutoArrange } from './utils/AutoArrange';
 import { Toast } from './components/Toast';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import LandingPage from './components/LandingPage';
@@ -134,6 +135,44 @@ function DesignerApp() {
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [activeView, undo, redo]);
+
+    // SLD→Layout Sync: Clean Layout staging when SLD items are deleted (while in SLD mode)
+    // This effect mirrors the reverse sync in LayoutDesigner but runs when in SLD mode
+    const prevSldItemCountRef = useRef<number>(0);
+
+    useEffect(() => {
+        // Only run in SLD mode
+        if (activeView !== 'sld') return;
+
+        // Get all SLD canvas items across all sheets
+        const allSldItems = sheets.flatMap(s => s.canvasItems);
+        const currentCount = allSldItems.length;
+        const prevCount = prevSldItemCountRef.current;
+
+        // Track count changes
+        prevSldItemCountRef.current = currentCount;
+
+        // Only clean when items are REMOVED (count decreased)
+        if (currentCount >= prevCount && prevCount !== 0) return;
+
+        // Build set of all existing SLD item IDs
+        const existingSldIds = new Set(allSldItems.map(i => i.uniqueID));
+
+        // Get current Layout staging
+        const layoutState = useLayoutStore.getState();
+        const currentLayoutStaging = layoutState.stagingComponents;
+
+        // Clean Layout staging: remove components whose sldItemId no longer exists
+        const cleanedLayoutStaging = currentLayoutStaging.filter(comp => {
+            if (!comp.sldItemId) return true; // Keep unlinked components
+            return existingSldIds.has(comp.sldItemId);
+        });
+
+        if (cleanedLayoutStaging.length !== currentLayoutStaging.length) {
+            console.log(`[App/SLD] Cleaning ${currentLayoutStaging.length - cleanedLayoutStaging.length} stale Layout staging components`);
+            layoutState.setStagingComponents(cleanedLayoutStaging);
+        }
+    }, [activeView, sheets]);
 
     // Quick Save: If we know the project ID, overwrite it. If not, open dialog.
     const handleSave = async () => {
@@ -433,6 +472,15 @@ function DesignerApp() {
             canvasRef.current.fitView();
         }
     };
+
+    const handleAutoArrange = () => {
+        const st = useStore.getState();
+        const sheet = st.getCurrentSheet();
+        if (!sheet) return;
+        st.takeSnapshot();
+        const newItems = applyAutoArrange(sheet.canvasItems, sheet.storedConnectors);
+        st.updateSheet({ canvasItems: newItems }, { recalcNetwork: false });
+    };
     const handleSaveImage = () => {
         if (activeView === 'layout') {
             layoutRef.current?.saveImage();
@@ -515,6 +563,7 @@ function DesignerApp() {
                                 panMode={panMode}
                                 onSetPanMode={setPanMode}
                                 onCalculate={calculateNetwork}
+                                onAutoArrange={handleAutoArrange}
                                 onCopyTrace={handleCopyTrace}
                                 showCurrentValues={showCurrentValues}
                                 onToggleShowCurrentValues={toggleShowCurrentValues}

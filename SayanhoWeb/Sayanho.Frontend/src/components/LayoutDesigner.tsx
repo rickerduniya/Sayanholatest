@@ -107,28 +107,53 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                 setSyncMessage(msg);
             });
 
+            // Build set of current Layout component IDs
+            const currentLayoutComponentIds = new Set(currentPlan.components.map(c => c.id));
+
             // Filtering strategy:
-            // 1. Check if item is already on the SLD active sheet (placed)
-            // 2. Check if item is already in staging (staging)
+            // 1. FIRST: Clean existing staging items - remove any whose Layout component was deleted
+            // 2. THEN: Add new items that aren't already placed or in staging
+
             const allPlacedSldIds = new Set(sheets.flatMap(s => s.canvasItems).map(i => i.uniqueID));
+
+            // Step 1: Clean stale staging items (those whose Layout component no longer exists)
+            const cleanedStagingItems = stagingItems.filter(item => {
+                // If already placed on canvas, remove from staging
+                if (allPlacedSldIds.has(item.uniqueID)) return false;
+                // If linked to a Layout component, check if that component still exists
+                const linkedLayoutId = item.properties?.[0]?.['_layoutComponentId'];
+                if (linkedLayoutId && !currentLayoutComponentIds.has(linkedLayoutId)) {
+                    console.log(`[handleSyncToSld] Removing stale staging item: ${item.name} (Layout component ${linkedLayoutId} deleted)`);
+                    return false;
+                }
+                return true;
+            });
+
+            // Step 2: Build set of existing IDs (both placed and cleaned staging)
             const existingIds = new Set([
                 ...allPlacedSldIds,
-                ...stagingItems.map(i => i.uniqueID)
+                ...cleanedStagingItems.map(i => i.uniqueID)
             ]);
 
-            const newStagingItems = [...stagingItems];
+            // Also track existing Layout component links to avoid duplicates
+            const existingLayoutLinks = new Set(
+                cleanedStagingItems
+                    .map(i => i.properties?.[0]?.['_layoutComponentId'])
+                    .filter(Boolean)
+            );
+
+            const newStagingItems = [...cleanedStagingItems];
             let addedCount = 0;
 
             for (const item of result.items) {
-                // Check by ID first (strongest link)
-                // If ID is new/generated, we might check by some other prop, but SyncEngine usually attempts to link.
-                // However, generateSldFromLayout usually creates NEW items if no link map exists.
-                // Ideally, SyncEngine should have preserved IDs if they were linked.
-                // Here we simply assume if ID exists, it's the same item.
-                if (!existingIds.has(item.uniqueID)) {
-                    newStagingItems.push(item);
-                    addedCount++;
-                }
+                const itemLayoutId = item.properties?.[0]?.['_layoutComponentId'];
+                // Skip if already in staging by ID
+                if (existingIds.has(item.uniqueID)) continue;
+                // Skip if layout component is already linked in staging
+                if (itemLayoutId && existingLayoutLinks.has(itemLayoutId)) continue;
+
+                newStagingItems.push(item);
+                addedCount++;
             }
 
             setStagingItems(newStagingItems);
@@ -137,8 +162,9 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
             // If we stage items, we can't stage connections easily unless we stage them too.
             // For now, we skip connections for unplaced items.
 
+            const removedCount = stagingItems.length - cleanedStagingItems.length;
             setSyncStatus('success');
-            setSyncMessage(`Synced ${addedCount} new items to Staging`);
+            setSyncMessage(`Synced: +${addedCount} new, -${removedCount} removed`);
 
             if (result.warnings.length > 0) {
                 console.warn('[SyncEngine] Warnings:', result.warnings);
@@ -187,15 +213,35 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
         // Get SLD components (all sheets)
         const sldComponents = sheets.flatMap(s => s.canvasItems);
 
-        if (sldComponents.length === 0) return;
+        // Build lookup of SLD item IDs that actually exist
+        const existingSldIds = new Set(sldComponents.map(c => c.uniqueID));
 
-        // Sync logic
+        // Get current state directly to avoid dependency loop
+        const layoutState = useLayoutStore.getState();
+        const currentLayoutStaging = layoutState.stagingComponents;
+
+        // STEP 1: Clean existing staging - remove items whose SLD link no longer exists
+        const cleanedExisting = currentLayoutStaging.filter(c => {
+            if (!c.sldItemId) return true; // Keep unlinked components
+            return existingSldIds.has(c.sldItemId);
+        });
+
+        const hadStaleItems = cleanedExisting.length !== currentLayoutStaging.length;
+        if (hadStaleItems) {
+            console.log(`[LayoutDesigner] Cleaning ${currentLayoutStaging.length - cleanedExisting.length} stale staging components`);
+        }
+
+        // If SLD is empty, just update with cleaned staging
+        if (sldComponents.length === 0) {
+            if (hadStaleItems) {
+                setStagingComponents(cleanedExisting);
+            }
+            return;
+        }
+
+        // STEP 2: Add new items from sync
         try {
             const stagedItems = syncEngine.syncSldToLayout(currentPlan, sldComponents);
-
-            // Get current state directly to avoid dependency loop
-            const layoutState = useLayoutStore.getState();
-            const currentLayoutStaging = layoutState.stagingComponents;
             const placedStagingIds = layoutState.placedStagingComponentIds;
 
             const placedSldIds = new Set(
@@ -214,17 +260,54 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                 if (placedLayoutIds.has(staged.id)) return false;
                 // Skip if this staging item was already placed
                 if (placedStagingIds.has(staged.id)) return false;
-                // Skip if already in current staging
-                return !currentLayoutStaging.some(existing => existing.sldItemId === staged.sldItemId);
+                // Skip if already in cleaned staging (check both id and sldItemId)
+                return !cleanedExisting.some(existing =>
+                    existing.sldItemId === staged.sldItemId || existing.id === staged.id
+                );
             });
 
-            if (newItems.length > 0) {
-                setStagingComponents([...currentLayoutStaging, ...newItems]);
+            // Only update if there are changes
+            if (hadStaleItems || newItems.length > 0) {
+                setStagingComponents([...cleanedExisting, ...newItems]);
             }
         } catch (e) {
             console.error("Failed to sync SLD to Layout", e);
+            // Still apply stale cleanup even if sync fails
+            if (hadStaleItems) {
+                setStagingComponents(cleanedExisting);
+            }
         }
     }, [currentPlan, sheets, activeSheetId, setStagingComponents]); // Removed layoutStaging to prevent loop
+
+    // REVERSE SYNC: Clean SLD staging when Layout components are deleted
+    // This effect ensures that when a Layout component is deleted, any SLD staging items
+    // that reference that Layout component are also cleaned up
+    React.useEffect(() => {
+        if (!currentPlan) return;
+
+        // Build set of all existing Layout component IDs (placed on any floor plan)
+        const layoutState = useLayoutStore.getState();
+        const existingLayoutIds = new Set<string>();
+        layoutState.floorPlans.forEach(p => p.components.forEach(c => existingLayoutIds.add(c.id)));
+        // Also include staging component IDs
+        layoutState.stagingComponents.forEach(c => existingLayoutIds.add(c.id));
+
+        // Get current SLD staging items
+        const sldState = useStore.getState();
+        const currentSldStaging = sldState.stagingItems;
+
+        // Clean SLD staging: remove items whose _layoutComponentId no longer exists
+        const cleanedSldStaging = currentSldStaging.filter(item => {
+            const linkedLayoutId = item.properties?.[0]?.['_layoutComponentId'];
+            if (!linkedLayoutId) return true; // Keep unlinked items
+            return existingLayoutIds.has(linkedLayoutId);
+        });
+
+        if (cleanedSldStaging.length !== currentSldStaging.length) {
+            console.log(`[LayoutDesigner] Cleaning ${currentSldStaging.length - cleanedSldStaging.length} stale SLD staging items`);
+            setStagingItems(cleanedSldStaging);
+        }
+    }, [currentPlan?.components, setStagingItems]);
 
     return (
         <>

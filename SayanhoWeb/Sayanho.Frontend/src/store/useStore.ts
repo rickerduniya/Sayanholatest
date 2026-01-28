@@ -21,6 +21,7 @@ interface StoreState {
     placedStagingIds: Set<string>;  // Track placed staging items to prevent duplicate placement
     setStagingItems: (items: CanvasItem[]) => void;
     removeStagingItem: (id: string) => void;
+    cleanStaleStagingItems: () => void;  // Remove staging items whose Layout link no longer exists
     markStagingItemPlaced: (id: string) => void;  // Mark a staging item as placed
     isStagingItemPlaced: (id: string) => boolean;  // Check if staging item was already placed
 
@@ -117,6 +118,10 @@ interface StoreState {
 
     // Auto Rating
     applyAutoRatingResults: (sheets: CanvasSheet[]) => void;
+
+    // Vision / Screenshot Registry
+    canvasSnapshotCallback: (() => Promise<string>) | null;
+    registerCanvasSnapshotCallback: (cb: (() => Promise<string>) | null) => void;
 }
 
 const MAX_HISTORY = 20;
@@ -182,6 +187,30 @@ export const useStore = create<StoreState>((set, get) => ({
         stagingItems: state.stagingItems.filter(i => i.uniqueID !== id)
     })),
 
+    // Remove staging items whose linked Layout component no longer exists
+    cleanStaleStagingItems: () => set((state) => {
+        // Get Layout store state to check if linked components still exist
+        const layoutState = useLayoutStore.getState();
+
+        // Build set of all existing Layout component IDs (placed + staging)
+        const existingLayoutIds = new Set<string>();
+        layoutState.floorPlans.forEach(p => p.components.forEach(c => existingLayoutIds.add(c.id)));
+        layoutState.stagingComponents.forEach(c => existingLayoutIds.add(c.id));
+
+        // Filter staging items: keep only those whose _layoutComponentId exists OR have no link
+        const cleanedItems = state.stagingItems.filter(item => {
+            const linkedLayoutId = item.properties?.[0]?.['_layoutComponentId'];
+            if (!linkedLayoutId) return true; // Keep unlinked items
+            return existingLayoutIds.has(linkedLayoutId);
+        });
+
+        if (cleanedItems.length !== state.stagingItems.length) {
+            console.log(`[SLD] Cleaned ${state.stagingItems.length - cleanedItems.length} stale staging items`);
+        }
+
+        return { stagingItems: cleanedItems };
+    }),
+
     // Mark an item as "in-flight" during drag to prevent double-drops
     markStagingItemPlaced: (id) => set((state) => {
         const newSet = new Set(state.placedStagingIds);
@@ -208,6 +237,9 @@ export const useStore = create<StoreState>((set, get) => ({
     updateSettings: (newSettings) => set((state) => ({
         settings: { ...state.settings, ...newSettings }
     })),
+
+    canvasSnapshotCallback: null,
+    registerCanvasSnapshotCallback: (cb) => set({ canvasSnapshotCallback: cb }),
 
     copiedItems: null,
     copiedConnectors: null,
@@ -601,6 +633,11 @@ export const useStore = create<StoreState>((set, get) => ({
                 console.log('[SLD→Layout] Deleted linked Layout component:', linkedLayoutId);
             });
         }
+
+        // Always clean Layout staging of any stale components after SLD deletion
+        import('./useLayoutStore').then(({ useLayoutStore }) => {
+            useLayoutStore.getState().cleanStaleStagingComponents();
+        });
     },
 
     deleteSelected: () => {
@@ -690,6 +727,13 @@ export const useStore = create<StoreState>((set, get) => ({
                     if (!exists) continue;
                     st.removeComponent(lid);
                 }
+                // Clean stale staging components after bulk deletion
+                st.cleanStaleStagingComponents();
+            });
+        } else {
+            // Even without linked components, clean any stale staging
+            import('./useLayoutStore').then(({ useLayoutStore }) => {
+                useLayoutStore.getState().cleanStaleStagingComponents();
             });
         }
     },
@@ -761,10 +805,24 @@ export const useStore = create<StoreState>((set, get) => ({
         get().takeSnapshot();
 
         let finalConnector = { ...connector };
-        const sKey = finalConnector.sourcePointKey.toLowerCase();
-        const tKey = finalConnector.targetPointKey.toLowerCase();
+        const classify = (item: CanvasItem | undefined, pointKey: string | undefined): 'in' | 'out' | 'other' => {
+            if (!item || !pointKey) return 'other';
+            const k = pointKey.toLowerCase();
+            if (k === 'in' || k.startsWith('in')) return 'in';
+            if (k === 'out' || k.startsWith('out')) return 'out';
+            if (item.name === 'Portal' && k === 'port') {
+                const meta = (item.properties?.[0] || {}) as Record<string, string>;
+                const dir = (meta['Direction'] || meta['direction'] || '').toLowerCase();
+                if (dir === 'in') return 'in';
+                if (dir === 'out') return 'out';
+            }
+            return 'other';
+        };
 
-        if ((sKey.includes('in') || sKey === 'in') && (tKey.includes('out') || tKey.startsWith('out'))) {
+        const sType = classify(finalConnector.sourceItem, finalConnector.sourcePointKey);
+        const tType = classify(finalConnector.targetItem, finalConnector.targetPointKey);
+
+        if (sType === 'in' && tType === 'out') {
             const tempItem = finalConnector.sourceItem;
             finalConnector.sourceItem = finalConnector.targetItem;
             finalConnector.targetItem = tempItem;
@@ -772,6 +830,14 @@ export const useStore = create<StoreState>((set, get) => ({
             const tempKey = finalConnector.sourcePointKey;
             finalConnector.sourcePointKey = finalConnector.targetPointKey;
             finalConnector.targetPointKey = tempKey;
+        } else if (!(sType === 'out' && tType === 'in')) {
+            console.warn('[CONNECT] Dropped invalid connector (must be OUT -> IN).', {
+                sourceItemId: finalConnector.sourceItem?.uniqueID,
+                sourceKey: finalConnector.sourcePointKey,
+                targetItemId: finalConnector.targetItem?.uniqueID,
+                targetKey: finalConnector.targetPointKey
+            });
+            return;
         }
 
         set((state) => ({

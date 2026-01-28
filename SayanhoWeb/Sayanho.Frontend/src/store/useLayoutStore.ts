@@ -96,6 +96,7 @@ interface LayoutStoreState {
     placedStagingComponentIds: Set<string>;  // Track placed staging components
     setStagingComponents: (components: LayoutComponent[]) => void;
     removeStagingComponent: (id: string) => void;
+    cleanStaleStagingComponents: () => void;  // Remove staging components whose SLD link no longer exists
     markStagingComponentPlaced: (id: string) => void;
     isStagingComponentPlaced: (id: string) => boolean;
 
@@ -544,6 +545,35 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
         stagingComponents: state.stagingComponents.filter(c => c.id !== id)
     })),
 
+    // Remove staging components whose linked SLD item no longer exists
+    cleanStaleStagingComponents: () => {
+        // Dynamically import to avoid circular dependency at module load time
+        import('./useStore').then(({ useStore }) => {
+            const sldState = useStore.getState();
+
+            // Build set of all existing SLD item IDs (placed on canvas + in staging)
+            const existingSldIds = new Set<string>();
+            sldState.sheets.forEach(s =>
+                s.canvasItems.forEach(i => existingSldIds.add(i.uniqueID))
+            );
+            sldState.stagingItems.forEach(i => existingSldIds.add(i.uniqueID));
+
+            set((state) => {
+                // Filter staging components: keep only those whose sldItemId exists OR have no link
+                const cleanedComponents = state.stagingComponents.filter(comp => {
+                    if (!comp.sldItemId) return true; // Keep unlinked components
+                    return existingSldIds.has(comp.sldItemId);
+                });
+
+                if (cleanedComponents.length !== state.stagingComponents.length) {
+                    console.log(`[Layout] Cleaned ${state.stagingComponents.length - cleanedComponents.length} stale staging components`);
+                }
+
+                return { stagingComponents: cleanedComponents };
+            });
+        });
+    },
+
     // Mark a component as "in-flight" during drag to prevent double-drops
     markStagingComponentPlaced: (id) => set((state) => {
         const newSet = new Set(state.placedStagingComponentIds);
@@ -684,6 +714,11 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
                 console.log('[Layout→SLD] Deleted linked SLD item:', linkedSldItemId);
             });
         }
+
+        // Always clean SLD staging of any stale items after Layout deletion
+        import('../store/useStore').then(({ useStore }) => {
+            useStore.getState().cleanStaleStagingItems();
+        });
     },
 
     // Connection actions
@@ -818,6 +853,13 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
                     if (!exists) continue;
                     st.deleteItem(sid);
                 }
+                // Clean stale staging items after bulk deletion
+                st.cleanStaleStagingItems();
+            });
+        } else {
+            // Even without linked items, clean any stale staging
+            import('../store/useStore').then(({ useStore }) => {
+                useStore.getState().cleanStaleStagingItems();
             });
         }
     },
