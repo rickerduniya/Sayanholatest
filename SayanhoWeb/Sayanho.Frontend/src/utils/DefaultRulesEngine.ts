@@ -338,18 +338,18 @@ const CONNECTOR_POINT_ITEMS: ItemRule[] = [
         name: "Point Switch Board",
         category: "connector_point",
         geometry: {
-            size: { width: 100, height: 100 },
+            size: { width: 200, height: 120 },
             connectionPoints: {
-                "in": { x: 50, y: 0 },
-                "out1": { x: 5, y: 35 },
-                "out2": { x: 5, y: 65 },
-                "out3": { x: 10, y: 95 },
-                "out4": { x: 30, y: 95 },
-                "out5": { x: 50, y: 95 },
-                "out6": { x: 70, y: 95 },
-                "out7": { x: 90, y: 95 },
-                "out8": { x: 95, y: 65 },
-                "out9": { x: 95, y: 35 }
+                "in": { x: 100, y: 0 },
+                "out1": { x: 4, y: 120 },
+                "out2": { x: 28, y: 120 },
+                "out3": { x: 52, y: 120 },
+                "out4": { x: 76, y: 120 },
+                "out5": { x: 100, y: 120 },
+                "out6": { x: 124, y: 120 },
+                "out7": { x: 148, y: 120 },
+                "out8": { x: 172, y: 120 },
+                "out9": { x: 196, y: 120 }
             }
         },
         defaults: {

@@ -24,6 +24,7 @@ import { TouchHandler, TouchGesture } from '../utils/TouchHandler';
 import { calculateSnapPosition } from '../utils/SnapUtils';
 import { sortOptionStringsAsc } from '../utils/sortUtils';
 import { fetchProperties } from '../utils/api';
+import { createConnectorWithDefaults } from '../utils/ConnectorFactory';
 
 const getPhaseColor = (connector: Connector, theme: string): string => {
     const useColor = ApplicationSettings.getSaveImageInColor();
@@ -307,155 +308,30 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
 
     useImperativeHandle(ref, () => ({
         saveImage: async () => {
-            console.log('[SAVE IMAGE] Starting save image process...');
-            if (stageRef.current && currentSheet) {
-                try {
-                    // Hide connection points before export
-                    setHideConnectionPoints(true);
+            try {
+                const dataURL = await getCanvasDataURL();
+                if (!dataURL) return;
 
-                    // Wait for state update to propagate and re-render
-                    await new Promise(resolve => setTimeout(resolve, 300));
+                const link = document.createElement('a');
+                const filename = `diagram_${Date.now()}.png`;
+                link.download = filename;
+                link.href = dataURL;
+                link.style.position = 'absolute';
+                link.style.left = '-9999px';
+                document.body.appendChild(link);
 
-                    const stage = stageRef.current.getStage();
-                    console.log('[SAVE IMAGE] Got stage reference');
+                setTimeout(() => {
+                    link.click();
+                    alert(`Image saved as ${filename}! Check your Downloads folder.`);
+                    setTimeout(() => {
+                        document.body.removeChild(link);
+                        URL.revokeObjectURL(dataURL);
+                    }, 5000);
+                }, 100);
 
-                    // Force layer redraw to ensure connection points are hidden
-                    stage.getLayers().forEach((layer: any) => layer.batchDraw());
-
-                    const bounds = calculateContentBounds();
-                    if (!bounds) {
-                        console.log('[SAVE IMAGE] Canvas is empty');
-                        alert("Canvas is empty.");
-                        return;
-                    }
-
-                    // Add padding/margin
-                    const padding = 50;
-                    const minX = bounds.minX - padding;
-                    const minY = bounds.minY - padding;
-                    const maxX = bounds.maxX + padding;
-                    const maxY = bounds.maxY + padding;
-                    const width = maxX - minX;
-                    const height = maxY - minY;
-
-                    console.log('[SAVE IMAGE] Bounding box:', { minX, minY, maxX, maxY, width, height });
-
-                    // 3. Create a temporary canvas for the final image
-                    const tempCanvas = document.createElement('canvas');
-                    const pixelRatio = 2; // High resolution
-                    tempCanvas.width = width * pixelRatio;
-                    tempCanvas.height = height * pixelRatio;
-                    const ctx = tempCanvas.getContext('2d');
-
-                    if (!ctx) {
-                        throw new Error("Could not get 2d context");
-                    }
-
-                    // 4. Fill with background color matching the theme
-                    ctx.fillStyle = colors.canvasBackground;
-                    ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-                    console.log('[SAVE IMAGE] Created temp canvas with white background');
-
-                    // 5. Get the stage content as an image
-                    console.log('[SAVE IMAGE] Calling stage.toDataURL...');
-
-                    // Save current stage state
-                    const oldScale = stage.scaleX();
-                    const oldPos = stage.position();
-
-                    // Reset stage to show the full area we want to capture
-                    // We move the stage so that (minX, minY) is at (0,0)
-                    stage.scale({ x: 1, y: 1 });
-                    stage.position({ x: -minX, y: -minY });
-                    stage.batchDraw();
-
-                    let dataURL;
-                    try {
-                        dataURL = stage.toDataURL({
-                            x: 0,
-                            y: 0,
-                            width: width,
-                            height: height,
-                            pixelRatio: pixelRatio,
-                            mimeType: 'image/png'
-                        });
-                        console.log('[SAVE IMAGE] toDataURL succeeded, dataURL length:', dataURL.length);
-                    } catch (e) {
-                        console.error('[SAVE IMAGE] toDataURL failed:', e);
-                        alert('Failed to export canvas. The canvas may be tainted by cross-origin images.');
-                        // Restore stage state even on error
-                        stage.scale({ x: oldScale, y: oldScale });
-                        stage.position(oldPos);
-                        stage.batchDraw();
-                        return;
-                    }
-
-                    // Restore stage state
-                    stage.scale({ x: oldScale, y: oldScale });
-                    stage.position(oldPos);
-                    stage.batchDraw();
-
-                    // 6. Draw the stage content onto the white canvas
-                    const img = new Image();
-                    img.onload = () => {
-                        console.log('[SAVE IMAGE] Image loaded, drawing to temp canvas');
-                        ctx.drawImage(img, 0, 0);
-
-                        // 7. Convert to Blob and Download
-                        // We use application/octet-stream to force the browser to treat it as a download
-                        // This often helps with filename preservation
-                        console.log('[SAVE IMAGE] Converting to Blob...');
-                        tempCanvas.toBlob((blob) => {
-                            if (blob) {
-                                console.log('[SAVE IMAGE] Blob created, size:', blob.size);
-                                const url = URL.createObjectURL(blob);
-                                const link = document.createElement('a');
-                                const filename = `diagram_${Date.now()}.png`;
-                                link.download = filename;
-                                link.href = url;
-                                // link.style.display = 'none'; // Try keeping it visible but hidden via positioning
-                                link.style.position = 'absolute';
-                                link.style.left = '-9999px';
-                                document.body.appendChild(link);
-
-                                console.log('[SAVE IMAGE] Link element:', link);
-                                console.log('[SAVE IMAGE] Triggering download for:', filename);
-
-                                // Small delay to ensure DOM update
-                                setTimeout(() => {
-                                    link.click();
-
-                                    // Show success message
-                                    alert(`Image saved as ${filename}! Check your Downloads folder.`);
-
-                                    // Cleanup
-                                    setTimeout(() => {
-                                        document.body.removeChild(link);
-                                        URL.revokeObjectURL(url);
-                                        console.log('[SAVE IMAGE] Cleanup complete');
-                                    }, 5000);
-                                }, 100);
-                            } else {
-                                console.error('[SAVE IMAGE] Failed to create blob');
-                                alert('Failed to create image blob.');
-                            }
-                        }, 'image/png');
-                    };
-                    img.onerror = (e) => {
-                        console.error("[SAVE IMAGE] Error loading stage snapshot:", e);
-                        alert("Failed to process diagram image.");
-                    };
-                    img.src = dataURL;
-
-                } catch (e) {
-                    console.error('[SAVE IMAGE] Error:', e);
-                    alert('Failed to save image. See console for details.');
-                } finally {
-                    // Restore connection points visibility
-                    setHideConnectionPoints(false);
-                }
-            } else {
-                console.log('[SAVE IMAGE] No stage ref or current sheet');
+            } catch (e) {
+                console.error('[SAVE IMAGE] Error:', e);
+                alert('Failed to save image. See console for details.');
             }
         },
         zoomIn: () => {
@@ -515,6 +391,123 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
             setPosition({ x: newX, y: newY });
         }
     }));
+
+    // Helper to get Data URL for both Save Image and AI Vision
+    const getCanvasDataURL = async (): Promise<string | null> => {
+        console.log('[CANVAS SNAPSHOT] Starting process...');
+        if (!stageRef.current || !currentSheet) {
+            console.warn('[CANVAS SNAPSHOT] No stage ref or current sheet');
+            return null;
+        }
+
+        try {
+            // Hide connection points before export
+            setHideConnectionPoints(true);
+
+            // Wait for state update to propagate and re-render
+            await new Promise(resolve => setTimeout(resolve, 300));
+
+            const stage = stageRef.current.getStage();
+
+            // Force layer redraw to ensure connection points are hidden
+            stage.getLayers().forEach((layer: any) => layer.batchDraw());
+
+            const bounds = calculateContentBounds();
+            if (!bounds) {
+                alert("Canvas is empty.");
+                return null;
+            }
+
+            // Add padding/margin
+            const padding = 50;
+            const minX = bounds.minX - padding;
+            const minY = bounds.minY - padding;
+            const maxX = bounds.maxX + padding;
+            const maxY = bounds.maxY + padding;
+            const width = maxX - minX;
+            const height = maxY - minY;
+
+            const pixelRatio = 2; // High resolution
+
+            // Save current stage state
+            const oldScale = stage.scaleX();
+            const oldPos = stage.position();
+
+            // Reset stage to show the full area we want to capture
+            // We move the stage so that (minX, minY) is at (0,0)
+            stage.scale({ x: 1, y: 1 });
+            stage.position({ x: -minX, y: -minY });
+            stage.batchDraw();
+
+            let dataURL;
+            try {
+                dataURL = stage.toDataURL({
+                    x: 0,
+                    y: 0,
+                    width: width,
+                    height: height,
+                    pixelRatio: pixelRatio,
+                    mimeType: 'image/png'
+                });
+            } catch (e) {
+                console.error('[CANVAS SNAPSHOT] toDataURL failed:', e);
+                // alert('Failed to export canvas. The canvas may be tainted by cross-origin images.');
+                // Restore stage state even on error
+                stage.scale({ x: oldScale, y: oldScale });
+                stage.position(oldPos);
+                stage.batchDraw();
+                return null;
+            }
+
+            // Restore stage state
+            stage.scale({ x: oldScale, y: oldScale });
+            stage.position(oldPos);
+            stage.batchDraw();
+
+            // Create a temp canvas to composite over background color
+            const tempCanvas = document.createElement('canvas');
+            tempCanvas.width = width * pixelRatio;
+            tempCanvas.height = height * pixelRatio;
+            const ctx = tempCanvas.getContext('2d');
+
+            if (!ctx) {
+                throw new Error("Could not get 2d context");
+            }
+
+            // Fill with background color matching the theme
+            ctx.fillStyle = colors.canvasBackground;
+            ctx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+
+            // Draw the stage image on top
+            const img = new Image();
+            await new Promise((resolve, reject) => {
+                img.onload = resolve;
+                img.onerror = reject;
+                img.src = dataURL;
+            });
+
+            ctx.drawImage(img, 0, 0);
+
+            return tempCanvas.toDataURL('image/png');
+
+        } catch (e) {
+            console.error('[CANVAS SNAPSHOT] Error:', e);
+            return null;
+        } finally {
+            // Restore connection points visibility
+            setHideConnectionPoints(false);
+        }
+    };
+
+    // Register the snapshot callback with the store
+    const { registerCanvasSnapshotCallback } = useStore();
+    useEffect(() => {
+        registerCanvasSnapshotCallback(async () => {
+            const url = await getCanvasDataURL();
+            return url || "";
+        });
+        return () => registerCanvasSnapshotCallback(null);
+    }, [registerCanvasSnapshotCallback, currentSheet, colors.canvasBackground, theme]); // Re-register if dependencies change
 
     // --- Viewport Persistence ---
 
@@ -888,10 +881,48 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
     const createConnection = (sourceId: string, sourceKey: string, targetId: string, targetKey: string) => {
         if (sourceId === targetId) return; // Don't connect to self
 
-        const sourceItem = currentSheet?.canvasItems.find(i => i.uniqueID === sourceId);
-        const targetItem = currentSheet?.canvasItems.find(i => i.uniqueID === targetId);
+        let sourceItem = currentSheet?.canvasItems.find(i => i.uniqueID === sourceId);
+        let targetItem = currentSheet?.canvasItems.find(i => i.uniqueID === targetId);
 
         if (!sourceItem || !targetItem) return;
+
+        const isPortal = (it: any) => it?.name === 'Portal';
+        const getDir = (it: any) => {
+            const p = (it?.properties?.[0] || {}) as Record<string, string>;
+            return (p['Direction'] || p['direction'] || '').toLowerCase();
+        };
+
+        const classify = (item: any, key: string): 'in' | 'out' | 'other' => {
+            const k = (key || '').toLowerCase();
+            if (k === 'in' || k.startsWith('in')) return 'in';
+            if (k === 'out' || k.startsWith('out')) return 'out';
+            if (isPortal(item) && k === 'port') {
+                const dir = getDir(item);
+                if (dir === 'in') return 'in';
+                if (dir === 'out') return 'out';
+            }
+            return 'other';
+        };
+
+        const sType = classify(sourceItem, sourceKey);
+        const tType = classify(targetItem, targetKey);
+
+        if (sType === 'in' && tType === 'out') {
+            const tmpItem = sourceItem;
+            sourceItem = targetItem;
+            targetItem = tmpItem;
+
+            const tmpId = sourceId;
+            sourceId = targetId;
+            targetId = tmpId;
+
+            const tmpKey = sourceKey;
+            sourceKey = targetKey;
+            targetKey = tmpKey;
+        } else if (!(sType === 'out' && tType === 'in')) {
+            alert('Invalid connection. Source must be an OUT point and target must be an IN point.');
+            return;
+        }
 
         // Check if this is a special connection (Point Switch Board or Avg. 5A Switch Board)
         const isSpecialConnection =
@@ -901,12 +932,6 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
             targetItem.name === "Avg. 5A Switch Board";
 
         // Skip material selection if this connection involves an 'in' portal (mirrors properties)
-        const isPortal = (it: any) => it?.name === 'Portal';
-        const getDir = (it: any) => {
-            const p = (it?.properties?.[0] || {}) as Record<string, string>;
-            return (p['Direction'] || p['direction'] || '').toLowerCase();
-        };
-
         const involvesInPortal = (isPortal(sourceItem) && getDir(sourceItem) === 'in') ||
             (isPortal(targetItem) && getDir(targetItem) === 'in');
 
@@ -924,204 +949,29 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
         const sourceItem = currentSheet?.canvasItems.find(i => i.uniqueID === sourceId);
         const targetItem = currentSheet?.canvasItems.find(i => i.uniqueID === targetId);
 
-        if (sourceItem && targetItem && addConnector && currentSheet) {
-            // Portal allowances: allow dragging from/to portals in any direction; rely on addConnector to swap endpoints.
-            const isPortal = (it: any) => it?.name === 'Portal';
+        if (!sourceItem || !targetItem || !addConnector || !currentSheet) return;
 
-            // Disallow portal-to-portal direct connection
-            if (isPortal(sourceItem) && isPortal(targetItem)) {
-                alert('Connecting a portal to another portal is not allowed.');
-                return;
-            }
+        const result = await createConnectorWithDefaults({
+            activeSheet: currentSheet,
+            allSheets: sheets,
+            sourceItem,
+            sourcePointKey: sourceKey,
+            targetItem,
+            targetPointKey: targetKey,
+            materialType
+        });
 
-            // One connector per portal (per sheet)
-            if (isPortal(sourceItem)) {
-                const cnt = countConnectorsForItem(currentSheet.sheetId, sourceItem.uniqueID);
-                if (cnt >= 1) { alert('This portal already has a connection.'); return; }
-            }
-            if (isPortal(targetItem)) {
-                const cnt = countConnectorsForItem(currentSheet.sheetId, targetItem.uniqueID);
-                if (cnt >= 1) { alert('This portal already has a connection.'); return; }
-            }
+        if (result.error) {
+            alert(result.error);
+            return;
+        }
 
-            // Fetch material-specific properties from backend (defaults)
-            let properties: Record<string, string> = {};
-            let alternativeCompany1 = '';
-            let alternativeCompany2 = '';
-            let laying: Record<string, string> = {};
-            let materialOverride: 'Cable' | 'Wiring' | null = null;
-            let forceVirtual = false;
-            let forceLengthZero = false;
+        if (result.warnings && result.warnings.length > 0) {
+            console.warn('[CONNECT] Warnings', result.warnings);
+        }
 
-            // If connecting via an 'in' portal, mirror properties from its counterpart's connector
-            const findPortalMeta = (it: any) => (it?.properties?.[0] || {}) as Record<string, string>;
-            const getNetId = (it: any) => (findPortalMeta(it)['NetId'] || findPortalMeta(it)['netId'] || '').trim();
-            const getDir = (it: any) => (findPortalMeta(it)['Direction'] || findPortalMeta(it)['direction'] || '').toLowerCase();
-
-            const maybeMirrorFromCounterpart = () => {
-                // Determine if this connection includes an 'in' portal
-                const portalSide = isPortal(sourceItem) ? sourceItem : (isPortal(targetItem) ? targetItem : null);
-                if (!portalSide) return;
-                const dir = getDir(portalSide);
-                if (dir !== 'in') return; // Only mirror on the target-side portal
-                // Always treat 'in'-side connectors as virtual/zero-length
-                forceVirtual = true;
-                forceLengthZero = true;
-                const netId = getNetId(portalSide);
-                if (!netId) return;
-
-                // Find counterpart portal
-                const allPortals: any[] = [];
-                sheets.forEach(sh => sh.canvasItems.forEach(ci => { if (ci.name === 'Portal') allPortals.push(ci); }));
-                const pair = allPortals.filter(p => getNetId(p) === netId);
-                if (pair.length !== 2) return;
-                const counterpart = pair.find(p => p.uniqueID !== portalSide.uniqueID);
-                if (!counterpart) return;
-
-                // Find connector attached to counterpart portal
-                const counterpartSheet = sheets.find(sh => sh.canvasItems.some(ci => ci.uniqueID === counterpart.uniqueID));
-                const attached = counterpartSheet?.storedConnectors.find(c => c.sourceItem.uniqueID === counterpart.uniqueID || c.targetItem.uniqueID === counterpart.uniqueID);
-                if (!attached) return;
-
-                // Mirror properties and related fields if counterpart connector exists
-                properties = { ...(attached.properties || {}) };
-                materialOverride = attached.materialType;
-                alternativeCompany1 = attached.alternativeCompany1 || '';
-                alternativeCompany2 = attached.alternativeCompany2 || '';
-                laying = { ...(attached.laying || {}) };
-                // Ensure a flag for read-only handling in UI/back-end IsVirtual
-                properties['IsVirtual'] = 'True';
-            };
-
-            maybeMirrorFromCounterpart();
-
-            try {
-                const API_BASE_URL = import.meta.env.VITE_API_URL || 'https://sayanho-g22t.onrender.com/api';
-                const response = await fetch(`${API_BASE_URL}/properties/${materialType}`);
-                let apiData: any = null;
-                if (response.ok && !forceVirtual) {
-                    apiData = await response.json();
-                    if (apiData.properties && apiData.properties.length > 0) {
-                        properties = apiData.properties[0];
-                        alternativeCompany1 = apiData.alternativeCompany1 || '';
-                        alternativeCompany2 = apiData.alternativeCompany2 || '';
-                        laying = apiData.laying || {};
-                    }
-                }
-
-                // Apply dynamic core/wire configuration based on DOWNSTREAM item's phase type
-                // Downstream = item with "in" connection point (receiving power)
-                // Upstream = item with "out" connection point (sending power)
-                // (excludes Point Switch Board and Avg. 5A Switch Board)
-                if (!forceVirtual && sourceItem && targetItem) {
-                    // Determine actual downstream item based on connection point types
-                    // "in" point = downstream (receiving), "out" point = upstream (sending)
-                    let downstreamItem = targetItem;
-                    let downstreamPointKey = targetKey;
-
-                    // Check if source has "in" point - then source is actually downstream
-                    if (sourceKey.toLowerCase().startsWith('in') && !targetKey.toLowerCase().startsWith('in')) {
-                        downstreamItem = sourceItem;
-                        downstreamPointKey = sourceKey;
-                    }
-                    // Check if target has "out" point while source has "out" - use target as downstream (fallback)
-                    else if (targetKey.toLowerCase().startsWith('out') && sourceKey.toLowerCase().startsWith('out')) {
-                        // Both have "out" - unusual case, default to target
-                        downstreamItem = targetItem;
-                    }
-                    // Normal case: source has "out", target has "in" - target is downstream
-
-                    const downstreamProps = downstreamItem.properties?.[0] || {};
-                    console.log(`[ConnectorDefaults] Downstream item: ${downstreamItem.name} (point: ${downstreamPointKey})`);
-
-                    // Apply dynamic Core for cables
-                    if (materialType === 'Cable') {
-                        const dynamicDefaults = DefaultRulesEngine.getConnectorDefaultsForTarget(
-                            materialType,
-                            downstreamItem.name,
-                            downstreamProps
-                        );
-                        if (dynamicDefaults.properties["Core"]) {
-                            properties["Core"] = dynamicDefaults.properties["Core"];
-                            console.log(`[ConnectorDefaults] Applied ${dynamicDefaults.properties["Core"]} for downstream: ${downstreamItem.name}`);
-                        }
-                    }
-
-                    // Apply wire configuration for wiring - find minimum conductor size from database
-                    if (materialType === 'Wiring' && apiData?.properties) {
-                        const phaseType = DefaultRulesEngine.getItemPhaseType(downstreamItem.name, downstreamProps);
-                        const isExcluded = DefaultRulesEngine.isExcludedFromPhaseLogic(downstreamItem.name);
-
-                        if (!isExcluded) {
-                            // Extract all available conductor sizes from the backend response
-                            const availableSizes: string[] = apiData.properties
-                                .map((p: any) => p["Conductor Size"])
-                                .filter((s: string) => s && typeof s === 'string');
-
-                            // Find the minimum conductor size for the required pattern
-                            let targetConductorSize: string | null = null;
-
-                            if (phaseType === 'three-phase') {
-                                // Pattern: "3 x ... + 2 x ..."
-                                const threePhasePattern = /^3 x \d+(\.\d+)? \+ 2 x \d+(\.\d+)? sq\.mm$/;
-                                const matchingSizes = availableSizes.filter(s => threePhasePattern.test(s));
-                                if (matchingSizes.length > 0) {
-                                    // Sort by extracting the first numeric value to find minimum
-                                    matchingSizes.sort((a, b) => {
-                                        const numA = parseFloat(a.match(/^3 x (\d+\.?\d*)/)?.[1] || '999');
-                                        const numB = parseFloat(b.match(/^3 x (\d+\.?\d*)/)?.[1] || '999');
-                                        return numA - numB;
-                                    });
-                                    targetConductorSize = matchingSizes[0];
-                                }
-                            } else {
-                                // Single-phase pattern: "2 x ... + 1 x ..."
-                                const singlePhasePattern = /^2 x \d+(\.\d+)? \+ 1 x \d+(\.\d+)? sq\.mm$/;
-                                const matchingSizes = availableSizes.filter(s => singlePhasePattern.test(s));
-                                if (matchingSizes.length > 0) {
-                                    // Sort by extracting the first numeric value to find minimum
-                                    matchingSizes.sort((a, b) => {
-                                        const numA = parseFloat(a.match(/^2 x (\d+\.?\d*)/)?.[1] || '999');
-                                        const numB = parseFloat(b.match(/^2 x (\d+\.?\d*)/)?.[1] || '999');
-                                        return numA - numB;
-                                    });
-                                    targetConductorSize = matchingSizes[0];
-                                }
-                            }
-
-                            if (targetConductorSize) {
-                                properties["Conductor Size"] = targetConductorSize;
-                                console.log(`[ConnectorDefaults] Applied Conductor Size: ${targetConductorSize} for downstream: ${downstreamItem.name} (${phaseType})`);
-                            }
-                        }
-                    }
-                }
-            } catch (error) {
-                console.error('Failed to fetch material properties:', error);
-            }
-
-            const connector: Connector = {
-                sourceItem: sourceItem,
-                sourcePointKey: sourceKey,
-                targetItem: targetItem,
-                targetPointKey: targetKey,
-                properties: properties,
-                currentValues: {
-                    "Current": "0 A",
-                    "R_Current": "0 A",
-                    "Y_Current": "0 A",
-                    "B_Current": "0 A",
-                    "Phase": ""
-                },
-                alternativeCompany1: alternativeCompany1,
-                alternativeCompany2: alternativeCompany2,
-                laying: laying,
-                accessories: [],
-                length: forceLengthZero ? 0 : 0,
-                materialType: materialOverride || materialType,
-                isVirtual: forceVirtual
-            };
-            addConnector(connector);
+        if (result.connector) {
+            addConnector(result.connector);
             log('[UI][CONNECT] Created connection', { sourceId, sourceKey, targetId, targetKey, materialType });
         }
     };

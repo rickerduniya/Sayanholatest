@@ -142,6 +142,21 @@ export const api = {
         return response.data;
     },
 
+    getMaterialProperties: async (materialType: string): Promise<{
+        properties: Record<string, string>[];
+        alternativeCompany1: string;
+        alternativeCompany2: string;
+        laying?: Record<string, string> | null;
+    }> => {
+        const response = await axios.get(`${API_URL}/properties/${encodeURIComponent(materialType)}`);
+        return {
+            properties: response.data?.properties ?? response.data?.Properties ?? [],
+            alternativeCompany1: response.data?.alternativeCompany1 ?? response.data?.AlternativeCompany1 ?? '',
+            alternativeCompany2: response.data?.alternativeCompany2 ?? response.data?.AlternativeCompany2 ?? '',
+            laying: response.data?.laying ?? response.data?.Laying ?? null
+        };
+    },
+
     getDiagrams: async () => {
         const response = await axios.get(`${API_URL}/diagram`);
         return response.data;

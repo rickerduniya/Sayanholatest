@@ -14,20 +14,10 @@
             "X": 762,
             "Y": 167
           },
-          "OriginalPosition": {
-            "IsEmpty": true,
-            "X": 0,
-            "Y": 0
-          },
           "Size": {
             "IsEmpty": false,
             "Width": 100,
             "Height": 100
-          },
-          "OriginalSize": {
-            "IsEmpty": true,
-            "Width": 0,
-            "Height": 0
           },
           "ConnectionPoints": {
             "in1": {
@@ -46,7 +36,6 @@
               "Y": 100
             }
           },
-          "OriginalConnectionPoints": {},
           "Properties": [
             {
               "Type": "Sheet Steel enclosure",
@@ -79,20 +68,10 @@
             "X": 562,
             "Y": 377
           },
-          "OriginalPosition": {
-            "IsEmpty": true,
-            "X": 0,
-            "Y": 0
-          },
           "Size": {
             "IsEmpty": false,
             "Width": 100,
             "Height": 100
-          },
-          "OriginalSize": {
-            "IsEmpty": true,
-            "Width": 0,
-            "Height": 0
           },
           "ConnectionPoints": {
             "in1": {
@@ -111,7 +90,6 @@
               "Y": 100
             }
           },
-          "OriginalConnectionPoints": {},
           "Properties": [
             {
               "Type": "Sheet Steel enclosure",
@@ -139,14 +117,10 @@
       ],
       "StoredConnectors": [],
       "ExistingLinePoints": [],
-      "ExistingOriginalLinePoints": [],
       "ExistingConnections": [],
-      "VirtualCanvasSize": {
-        "IsEmpty": false,
-        "Width": 2000,
-        "Height": 2000
-      },
-      "Scale": 1
+      "Scale": 0.65,
+      "ViewportX": 0,
+      "ViewportY": 0
     }
   ]
 }

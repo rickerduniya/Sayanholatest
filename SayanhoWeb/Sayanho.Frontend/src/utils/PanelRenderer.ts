@@ -141,7 +141,7 @@ export class PanelRenderer {
                             svg += `<text x="${labelX}" y="${incomerYStart + 42}" font-family="Arial" font-size="11" fill="#000">${displayType}</text>`;
                         }
                     }
-                    svg += `<text x="${centerX + 25}" y="${incomerYStart + 10}" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold" fill="#000">I/C ${secIndex}</text>`;
+                    svg += `<text x="${centerX + 28}" y="${incomerYStart + 5}" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold" fill="#000">I/C ${secIndex}</text>`;
                 };
 
                 // Draw Legs
@@ -262,7 +262,7 @@ export class PanelRenderer {
                         svg += `<text x="${labelX}" y="${incomerYStart + 42}" font-family="Arial" font-size="11" fill="#000">${displayType}</text>`;
                     }
                 }
-                svg += `<text x="${sectionCenter + 25}" y="${incomerYStart + 10}" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold" fill="#000">I/C ${sec}</text>`;
+                svg += `<text x="${sectionCenter + 28}" y="${incomerYStart + 5}" text-anchor="middle" font-family="Arial" font-size="12" font-weight="bold" fill="#000">I/C ${sec}</text>`;
                 svg += redDot.replace('cx="0" cy="0"', `cx="${sectionCenter}" cy="${incomerYStart}"`).replace('r="4"', 'r="3"').replace('cx=""', `cx="${sectionCenter}" cy="${incomerYStart}"`);
 
 

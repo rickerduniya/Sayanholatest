@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { apiTracer, ApiTraceEntry } from '../utils/apiTracer';
-import { X, Trash2, RefreshCw, ChevronRight, ChevronDown } from 'lucide-react';
+import { X, Trash2, RefreshCw, ChevronRight, ChevronDown, Download } from 'lucide-react';
 
 interface NetworkMonitorProps {
     onClose: () => void;
@@ -30,6 +30,48 @@ export const NetworkMonitor: React.FC<NetworkMonitorProps> = ({ onClose }) => {
     const handleClear = () => {
         apiTracer.clearTraces();
         setSelectedTraceId(null);
+    };
+
+    const handleDownload = () => {
+        const sanitizeValue = (value: any): any => {
+            if (typeof value === 'string') {
+                if (value.startsWith('data:image')) {
+                    return `[Image Data - ${value.substring(0, 30)}... - Truncated]`;
+                }
+                // Also catch potentially raw base64 or very long strings that look like images
+                if (value.length > 10000) {
+                    return `[Long String Data - ${value.length} chars - Truncated]`;
+                }
+            }
+            if (Array.isArray(value)) {
+                return value.map(sanitizeValue);
+            }
+            if (typeof value === 'object' && value !== null) {
+                const newObj: any = {};
+                for (const key in value) {
+                    newObj[key] = sanitizeValue(value[key]);
+                }
+                return newObj;
+            }
+            return value;
+        };
+
+        const sanitizedTraces = traces.map(t => ({
+            ...t,
+            requestBody: sanitizeValue(t.requestBody),
+            responseBody: sanitizeValue(t.responseBody)
+        }));
+
+        const data = JSON.stringify(sanitizedTraces, null, 2);
+        const blob = new Blob([data], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `network_logs_${new Date().toISOString().replace(/[:.]/g, '-')}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
     };
 
     const StatusBadge = ({ status, error }: { status?: number; error?: string }) => {
@@ -86,6 +128,9 @@ export const NetworkMonitor: React.FC<NetworkMonitorProps> = ({ onClose }) => {
                     </span>
                 </div>
                 <div className="flex items-center gap-2">
+                    <button onClick={handleDownload} className="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 rounded text-gray-500" title="Download Logs">
+                        <Download size={16} color={colors.text} />
+                    </button>
                     <button onClick={handleClear} className="p-1.5 hover:bg-gray-100 dark:hover:bg-slate-800 rounded text-gray-500" title="Clear">
                         <Trash2 size={16} color={colors.text} />
                     </button>

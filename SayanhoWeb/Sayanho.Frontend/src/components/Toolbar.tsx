@@ -7,7 +7,7 @@ import {
     Zap, Type, Moon, Sun,
     Undo, Redo, Image as ImageIcon,
     MousePointer2, Hand, Calculator, Copy,
-    Eye, EyeOff, RotateCcw, Maximize
+    Eye, EyeOff, RotateCcw, Maximize, LayoutGrid
 } from 'lucide-react';
 
 interface ToolbarProps {
@@ -31,6 +31,7 @@ interface ToolbarProps {
     panMode: boolean;
     onSetPanMode: (mode: boolean) => void;
     onCalculate: () => void;
+    onAutoArrange: () => void;
     onCopyTrace: () => void;
     showCurrentValues: boolean;
     onToggleShowCurrentValues: () => void;
@@ -46,6 +47,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     onUndo, onRedo,
     panMode, onSetPanMode,
     onCalculate,
+    onAutoArrange,
     onCopyTrace,
     showCurrentValues,
     onToggleShowCurrentValues,
@@ -125,6 +127,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
             <ToolbarButton icon={<ZoomOut size={16} />} onClick={onZoomOut} tooltip="Zoom Out" />
             <ToolbarButton icon={<RotateCcw size={14} />} onClick={onResetZoom} tooltip="Reset Zoom (65%)" />
             <ToolbarButton icon={<Maximize size={16} />} onClick={onFitContent} tooltip="Fit to Content" />
+            <ToolbarButton icon={<LayoutGrid size={16} />} onClick={onAutoArrange} tooltip="Auto Arrange" />
 
             <ToolbarSeparator />
 

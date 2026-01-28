@@ -83,19 +83,18 @@ export const STATIC_ITEM_DEFINITIONS: Record<string, { size: Size, connectionPoi
         }
     },
     "Point Switch Board": {
-        size: { width: 100, height: 100 },  // C# size - SVG will be stretched from 100 to 120 width
+        size: { width: 200, height: 120 },
         connectionPoints: {
-            // Use exact C# connection points - they match the stretched SVG positions
-            "in": { x: 50, y: 0 },      // C# uses (50,0) but that seems wrong, SVG center at 50 becomes 60 when stretched
-            "out1": { x: 5, y: 35 },    // SVG at 5 becomes 6 (5 * 1.2)
-            "out2": { x: 5, y: 65 },    // SVG at 5 becomes 6 (5 * 1.2)
-            "out3": { x: 10, y: 95 },   // SVG at 10 becomes 12 (10 * 1.2)
-            "out4": { x: 30, y: 95 },   // SVG at 30 becomes 36 (30 * 1.2)
-            "out5": { x: 50, y: 95 },   // SVG at 50 becomes 60 (50 * 1.2)
-            "out6": { x: 70, y: 95 },   // SVG at 70 becomes 84 (70 * 1.2)
-            "out7": { x: 90, y: 95 },  // SVG at 90 becomes 108 (90 * 1.2)
-            "out8": { x: 95, y: 65 },  // SVG at 95 becomes 114 (95 * 1.2)
-            "out9": { x: 95, y: 35 }   // SVG at 95 becomes 114 (95 * 1.2)
+            "in": { x: 100, y: 0 },
+            "out1": { x: 4, y: 120 },
+            "out2": { x: 28, y: 120 },
+            "out3": { x: 52, y: 120 },
+            "out4": { x: 76, y: 120 },
+            "out5": { x: 100, y: 120 },
+            "out6": { x: 124, y: 120 },
+            "out7": { x: 148, y: 120 },
+            "out8": { x: 172, y: 120 },
+            "out9": { x: 196, y: 120 }
         }
     },
     "Avg. 5A Switch Board": {

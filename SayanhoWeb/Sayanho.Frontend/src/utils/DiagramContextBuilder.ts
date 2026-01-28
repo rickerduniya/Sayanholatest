@@ -57,6 +57,44 @@ export interface DiagramSummary {
     connectionTypes: { Cable: number; Wiring: number };
 }
 
+export interface DiagramStateJson {
+    activeSheetId: string | null;
+    sheetCount: number;
+    totalItems: number;
+    totalConnectors: number;
+    sheets: Array<{
+        sheetId: string;
+        name: string;
+        scale: number;
+        viewportX: number;
+        viewportY: number;
+        itemCount: number;
+        connectorCount: number;
+        items: Array<{
+            id: string;
+            shortId: string;
+            name: string;
+            position: { x: number; y: number };
+            size: { width: number; height: number };
+            rotation: number;
+            locked: boolean;
+            connectionPointKeys: string[];
+            properties: Record<string, string>;
+        }>;
+        connectors: Array<{
+            index: number;
+            materialType: string;
+            sourceItemId: string;
+            sourcePointKey: string;
+            targetItemId: string;
+            targetPointKey: string;
+            isVirtual: boolean;
+            properties: Record<string, string>;
+            currentValues: Record<string, string>;
+        }>;
+    }>;
+}
+
 // Cable sizing lookup table (current rating in Amps)
 const CABLE_RATINGS: Record<string, number> = {
     '0.5': 3,
@@ -85,12 +123,12 @@ export class DiagramContextBuilder {
      */
     static buildContext(sheets: CanvasSheet[]): string {
         let context = "## Current Diagram State\n\n";
-        
+
         sheets.forEach((sheet, idx) => {
             context += `### Sheet ${idx + 1}: ${sheet.name}\n`;
             context += `- Items: ${sheet.canvasItems.length}\n`;
             context += `- Connections: ${sheet.storedConnectors.length}\n\n`;
-            
+
             if (sheet.canvasItems.length > 0) {
                 context += "**Items:**\n";
                 sheet.canvasItems.forEach(item => {
@@ -103,7 +141,7 @@ export class DiagramContextBuilder {
                 });
                 context += "\n";
             }
-            
+
             if (sheet.storedConnectors.length > 0) {
                 context += "**Connections:**\n";
                 sheet.storedConnectors.forEach((conn, i) => {
@@ -117,8 +155,197 @@ export class DiagramContextBuilder {
                 context += "\n";
             }
         });
-        
+
         return context;
+    }
+
+    static buildCompactContext(sheets: CanvasSheet[], activeSheetId: string | null): string {
+        const active = sheets.find(s => s.sheetId === activeSheetId) || sheets[0];
+        if (!active) return '## Diagram Snapshot\n\n(no sheets)\n';
+
+        const truncate = (v: any, max: number) => {
+            const s = (v ?? '').toString().replace(/\s+/g, ' ').trim();
+            return s.length > max ? s.slice(0, max - 1) + '…' : s;
+        };
+
+        const pickProps = (name: string, props: Record<string, string>) => {
+            const wanted = new Set<string>(['Way', 'Current Rating', 'Voltage', 'Power', 'Phase', 'Type', 'Text', 'FontSize', 'Color', 'Align', 'Bold', 'Italic', 'Underline', 'Strikethrough', 'FontFamily']);
+            const out: Record<string, string> = {};
+            Object.entries(props || {}).forEach(([k, v]) => {
+                if (!wanted.has(k)) return;
+                if (!v) return;
+                out[k] = truncate(v, 64);
+            });
+            return out;
+        };
+
+        const byId = new Map(active.canvasItems.map(i => [i.uniqueID, i] as const));
+
+        let context = `## Diagram Snapshot\n\n`;
+        context += `sheet=${truncate(active.name, 48)} items=${active.canvasItems.length} connectors=${active.storedConnectors.length}\n\n`;
+
+        if (active.canvasItems.length > 0) {
+            context += `items:\n`;
+            active.canvasItems.forEach(it => {
+                const props = pickProps(it.name, (it.properties?.[0] || {}) as Record<string, string>);
+                const propStr = Object.keys(props).length > 0
+                    ? ' ' + Object.entries(props).map(([k, v]) => `${k}=${v}`).join(' ')
+                    : '';
+                const cp = Object.keys(it.connectionPoints || {});
+                context += `- ${it.uniqueID.substring(0, 8)} ${truncate(it.name, 28)} cp=${cp.join(',')}${propStr}\n`;
+            });
+            context += `\n`;
+        }
+
+        if (active.storedConnectors.length > 0) {
+            context += `connectors:\n`;
+            active.storedConnectors.forEach((c, idx) => {
+                const sId = c.sourceItem?.uniqueID || '';
+                const tId = c.targetItem?.uniqueID || '';
+                const sShort = sId ? sId.substring(0, 8) : '????????';
+                const tShort = tId ? tId.substring(0, 8) : '????????';
+                const current = truncate(c.currentValues?.Current || '', 16);
+                const material = truncate(c.materialType || '', 10);
+                const virtual = c.isVirtual ? ' virtual' : '';
+                const srcName = byId.get(sId)?.name || c.sourceItem?.name || '';
+                const dstName = byId.get(tId)?.name || c.targetItem?.name || '';
+                const hint = srcName && dstName ? ` ${truncate(srcName, 16)}→${truncate(dstName, 16)}` : '';
+                context += `- #${idx} ${sShort}:${c.sourcePointKey} -> ${tShort}:${c.targetPointKey} ${material}${virtual}${current ? ` I=${current}` : ''}${hint}\n`;
+            });
+            context += `\n`;
+        }
+
+        context += `instructions: call get_diagram_state_json for full details before edits.\n`;
+        return context;
+    }
+
+    static getDiagramStateJson(
+        sheets: CanvasSheet[],
+        activeSheetId: string | null,
+        scope: 'active' | 'all' = 'active'
+    ): DiagramStateJson {
+        const selectedSheets = scope === 'all'
+            ? sheets
+            : sheets.filter(s => s.sheetId === activeSheetId);
+
+        const sheetPayload = selectedSheets.map(sheet => {
+            const items = sheet.canvasItems.map(item => ({
+                id: item.uniqueID,
+                shortId: item.uniqueID.substring(0, 8),
+                name: item.name,
+                position: { x: item.position.x, y: item.position.y },
+                size: { width: item.size.width, height: item.size.height },
+                rotation: item.rotation ?? 0,
+                locked: !!item.locked,
+                connectionPointKeys: Object.keys(item.connectionPoints || {}),
+                properties: (item.properties?.[0] || {}) as Record<string, string>
+            }));
+
+            const connectors = sheet.storedConnectors.map((c, index) => ({
+                index,
+                materialType: c.materialType || 'Unknown',
+                sourceItemId: c.sourceItem?.uniqueID || '',
+                sourcePointKey: c.sourcePointKey || '',
+                targetItemId: c.targetItem?.uniqueID || '',
+                targetPointKey: c.targetPointKey || '',
+                isVirtual: !!c.isVirtual,
+                properties: (c.properties || {}) as Record<string, string>,
+                currentValues: (c.currentValues || {}) as Record<string, string>
+            }));
+
+            return {
+                sheetId: sheet.sheetId,
+                name: sheet.name,
+                scale: sheet.scale,
+                viewportX: sheet.viewportX,
+                viewportY: sheet.viewportY,
+                itemCount: items.length,
+                connectorCount: connectors.length,
+                items,
+                connectors
+            };
+        });
+
+        const totalItems = sheetPayload.reduce((acc, s) => acc + s.itemCount, 0);
+        const totalConnectors = sheetPayload.reduce((acc, s) => acc + s.connectorCount, 0);
+
+        return {
+            activeSheetId,
+            sheetCount: sheets.length,
+            totalItems,
+            totalConnectors,
+            sheets: sheetPayload
+        };
+    }
+
+    static validateDiagram(sheets: CanvasSheet[]): { isValid: boolean; errors: string[]; warnings: string[] } {
+        const errors: string[] = [];
+        const warnings: string[] = [];
+
+        const getPortalMeta = (it: CanvasItem) => (it.properties?.[0] || {}) as Record<string, string>;
+        const getDir = (it: CanvasItem) => (getPortalMeta(it)['Direction'] || getPortalMeta(it)['direction'] || '').toLowerCase();
+        const getNetId = (it: CanvasItem) => (getPortalMeta(it)['NetId'] || getPortalMeta(it)['netId'] || '').trim();
+
+        for (const sheet of sheets) {
+            const itemById = new Map(sheet.canvasItems.map(i => [i.uniqueID, i] as const));
+
+            const portalConnCount = new Map<string, number>();
+
+            sheet.storedConnectors.forEach((c, idx) => {
+                const sid = c.sourceItem?.uniqueID;
+                const tid = c.targetItem?.uniqueID;
+                if (!sid || !tid) {
+                    errors.push(`[${sheet.name}] Connector ${idx}: missing source/target item`);
+                    return;
+                }
+
+                const src = itemById.get(sid) || c.sourceItem;
+                const dst = itemById.get(tid) || c.targetItem;
+
+                if (!src) warnings.push(`[${sheet.name}] Connector ${idx}: source item not found in sheet items`);
+                if (!dst) warnings.push(`[${sheet.name}] Connector ${idx}: target item not found in sheet items`);
+
+                if (src?.name === 'Portal' && dst?.name === 'Portal') {
+                    errors.push(`[${sheet.name}] Connector ${idx}: portal-to-portal is not allowed`);
+                }
+
+                if (src?.connectionPoints && !src.connectionPoints[c.sourcePointKey]) {
+                    errors.push(`[${sheet.name}] Connector ${idx}: invalid sourcePointKey ${c.sourcePointKey}`);
+                }
+                if (dst?.connectionPoints && !dst.connectionPoints[c.targetPointKey]) {
+                    errors.push(`[${sheet.name}] Connector ${idx}: invalid targetPointKey ${c.targetPointKey}`);
+                }
+
+                [src, dst].forEach(it => {
+                    if (!it || it.name !== 'Portal') return;
+                    portalConnCount.set(it.uniqueID, (portalConnCount.get(it.uniqueID) || 0) + 1);
+                });
+            });
+
+            portalConnCount.forEach((count, portalId) => {
+                if (count > 1) {
+                    errors.push(`[${sheet.name}] Portal ${portalId.substring(0, 8)}: has ${count} connectors (max 1)`);
+                }
+            });
+
+            const portals = sheet.canvasItems.filter(i => i.name === 'Portal');
+            const byNet = new Map<string, CanvasItem[]>();
+            portals.forEach(p => {
+                const netId = getNetId(p);
+                if (!netId) return;
+                if (!byNet.has(netId)) byNet.set(netId, []);
+                byNet.get(netId)!.push(p);
+            });
+            byNet.forEach((arr, netId) => {
+                if (arr.length !== 2) warnings.push(`[${sheet.name}] NetId ${netId}: expected 2 portals, found ${arr.length}`);
+                const dirs = arr.map(getDir).filter(Boolean);
+                if (dirs.length > 0 && !(dirs.includes('in') && dirs.includes('out'))) {
+                    warnings.push(`[${sheet.name}] NetId ${netId}: expected one in and one out portal`);
+                }
+            });
+        }
+
+        return { isValid: errors.length === 0, errors, warnings };
     }
 
     /**
@@ -141,7 +368,7 @@ export class DiagramContextBuilder {
             sheet.canvasItems.forEach(item => {
                 const props = item.properties?.[0] || {};
                 const powerStr = props['Power'] || '';
-                
+
                 if (powerStr) {
                     const power = parseFloat(powerStr.split(' ')[0]) || 0;
                     const phase = props['Phase'] || 'unassigned';
@@ -149,10 +376,10 @@ export class DiagramContextBuilder {
                     const effectivePower = power * diversification;
                     const voltage = phase === 'ALL' ? 415 : 230;
                     const current = effectivePower / voltage;
-                    
+
                     result.totalPower += effectivePower;
                     result.totalCurrent += current;
-                    
+
                     result.itemBreakdown.push({
                         name: item.name,
                         power: effectivePower,
@@ -200,15 +427,15 @@ export class DiagramContextBuilder {
         const maxPower = Math.max(powers.R, powers.Y, powers.B);
         const minPower = Math.min(powers.R, powers.Y, powers.B);
         const avgPower = (powers.R + powers.Y + powers.B) / 3;
-        
+
         const maxPhase = phases.find(p => powers[p] === maxPower) || 'R';
         const minPhase = phases.find(p => powers[p] === minPower) || 'R';
-        
+
         // Calculate imbalance as percentage deviation from average
-        const imbalancePercent = avgPower > 0 
-            ? ((maxPower - minPower) / avgPower) * 100 
+        const imbalancePercent = avgPower > 0
+            ? ((maxPower - minPower) / avgPower) * 100
             : 0;
-        
+
         // Industry standard: less than 10% is balanced
         const isBalanced = imbalancePercent <= 10;
 
@@ -237,7 +464,7 @@ export class DiagramContextBuilder {
     static getCableRecommendation(current: number, phases: string = '1-phase'): CableRecommendation {
         const is3Phase = phases.includes('3');
         const effectiveCurrent = is3Phase ? current / 1.732 : current;
-        
+
         const options: CableRecommendation['options'] = [];
         let recommended = '';
         let minSize = '';
@@ -245,7 +472,7 @@ export class DiagramContextBuilder {
         for (const [size, rating] of Object.entries(CABLE_RATINGS)) {
             if (rating >= effectiveCurrent) {
                 if (!minSize) minSize = size;
-                
+
                 let suitability = 'Suitable';
                 if (rating >= effectiveCurrent * 1.25) {
                     suitability = 'Recommended (25% headroom)';
@@ -280,7 +507,7 @@ export class DiagramContextBuilder {
      * Get comprehensive diagram summary
      */
     static getDiagramSummary(sheets: CanvasSheet[], sheetName?: string): DiagramSummary {
-        const filteredSheets = sheetName 
+        const filteredSheets = sheetName
             ? sheets.filter(s => s.name.toLowerCase().includes(sheetName.toLowerCase()))
             : sheets;
 
