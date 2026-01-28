@@ -51,6 +51,8 @@ interface LayoutCanvasProps {
     onScaleChange?: (scale: number) => void;
     showMagicWires?: boolean;
     onCalibrationFinished?: (pixelLength: number) => void;
+    isAddTextMode?: boolean;
+    onAddTextComplete?: () => void;
 }
 
 // Room type to color mapping
@@ -82,7 +84,7 @@ const DETECTED_ROOM_PALETTE = [
     'rgba(34, 197, 94, 0.7)',     // emerald
 ];
 
-export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ onScaleChange, showMagicWires, onCalibrationFinished }, ref) => {
+export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ onScaleChange, showMagicWires, onCalibrationFinished, isAddTextMode, onAddTextComplete }, ref) => {
     const stageRef = useRef<any>(null);
     const { theme, colors } = useTheme();
     const componentImages = useLayoutComponentImages();
@@ -108,6 +110,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
         clearSelection,
         deleteSelected,
         updateViewport,
+        updateFloorPlan,
         takeSnapshot,
         // Staging components
         removeStagingComponent,
@@ -523,6 +526,26 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
 
         if (tool === 'pan') {
             // Pan is handled by draggable stage
+            return;
+        }
+
+        // Text mode - click to add text box
+        if (isAddTextMode && currentPlan) {
+            takeSnapshot();
+            const newTextItem = {
+                id: `text-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`,
+                text: 'Text',
+                position: point,
+                fontSize: 14,
+                fontFamily: 'Arial',
+                color: theme === 'dark' ? '#ffffff' : '#000000',
+                align: 'left' as const,
+                width: 100
+            };
+            updateFloorPlan(currentPlan.id, {
+                textItems: [...(currentPlan.textItems || []), newTextItem]
+            });
+            onAddTextComplete?.();
             return;
         }
 
@@ -1075,7 +1098,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                         stroke={isSelected ? '#3b82f6' : (theme === 'dark' ? '#e5e7eb' : '#1f2937')}
                         strokeWidth={wall.thickness}
                         lineCap="butt"
-                        onClick={() => selectElement(wall.id)}
+                        onClick={() => { if (drawingState.activeTool !== 'component') selectElement(wall.id); }}
                         draggable={drawingState.activeTool === 'select'}
                         onDragStart={() => takeSnapshot()}
                         onDragEnd={(e) => {
@@ -1221,7 +1244,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                     x={door.position.x}
                     y={door.position.y}
                     rotation={rotation}
-                    onClick={() => selectElement(door.id)}
+                    onClick={() => { if (drawingState.activeTool !== 'component') selectElement(door.id); }}
                     draggable={drawingState.activeTool === 'select'}
                     dragBoundFunc={(pos) => {
                         // Slide-on-Wall Logic
@@ -1478,7 +1501,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                     fill={theme === 'dark' ? '#60a5fa' : '#93c5fd'}
                     stroke={isSelected ? '#3b82f6' : '#3b82f6'}
                     strokeWidth={isSelected ? 3 : 1}
-                    onClick={() => selectElement(win.id)}
+                    onClick={() => { if (drawingState.activeTool !== 'component') selectElement(win.id); }}
                     draggable={drawingState.activeTool === 'select'}
                     dragBoundFunc={(pos) => {
                         const worldX = (pos.x - position.x) / scale;
@@ -2012,6 +2035,56 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
     };
 
 
+    // Render text items
+    const renderTextItems = () => {
+        if (!currentPlan || !currentPlan.textItems) return null;
+
+        return currentPlan.textItems.map(textItem => {
+            const isSelected = selectedElementIds.includes(textItem.id);
+
+            return (
+                <Text
+                    key={textItem.id}
+                    x={textItem.position.x}
+                    y={textItem.position.y}
+                    text={textItem.text}
+                    fontSize={textItem.fontSize || 14}
+                    fontFamily={textItem.fontFamily || 'Arial'}
+                    fill={textItem.color || (theme === 'dark' ? '#ffffff' : '#000000')}
+                    align={textItem.align || 'left'}
+                    width={textItem.width}
+                    draggable={drawingState.activeTool === 'select'}
+                    onClick={() => { if (drawingState.activeTool !== 'component') selectElement(textItem.id); }}
+                    onDragStart={() => takeSnapshot()}
+                    onDragEnd={(e) => {
+                        const newPos = { x: e.target.x(), y: e.target.y() };
+                        // Update text item position
+                        if (currentPlan) {
+                            updateFloorPlan(currentPlan.id, {
+                                textItems: currentPlan.textItems?.map(t =>
+                                    t.id === textItem.id ? { ...t, position: newPos } : t
+                                )
+                            });
+                        }
+                    }}
+                    onDblClick={() => {
+                        // Enable text editing
+                        const newText = prompt('Enter text:', textItem.text);
+                        if (newText !== null && currentPlan) {
+                            updateFloorPlan(currentPlan.id, {
+                                textItems: currentPlan.textItems?.map(t =>
+                                    t.id === textItem.id ? { ...t, text: newText } : t
+                                )
+                            });
+                        }
+                    }}
+                    stroke={isSelected ? '#3b82f6' : undefined}
+                    strokeWidth={isSelected ? 0.5 : 0}
+                />
+            );
+        });
+    };
+
     // Render current drawing path
     const renderDrawingPath = () => {
         if (!isDrawing || currentPath.length === 0) return null;
@@ -2236,6 +2309,9 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                     {renderConnections(true)}
                     {renderComponents(true)}
 
+                    {/* Text Items */}
+                    {renderTextItems()}
+
                     {renderOcrOverlay()}
 
                     {/* Window Handles (Always Top) */}
@@ -2329,6 +2405,54 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                             }}
                         >
                             Go to Schematic ↗
+                        </button>
+
+                        {/* Divider */}
+                        <div className="h-px mx-2 my-1" style={{ backgroundColor: colors.border }} />
+
+                        {/* Copy */}
+                        <button
+                            className="block w-full text-left px-3 py-1 hover:bg-black/5 dark:hover:bg-white/10"
+                            onClick={() => {
+                                if (menu.componentId) {
+                                    selectElement(menu.componentId);
+                                    useLayoutStore.getState().copySelection();
+                                }
+                                setMenu({ ...menu, visible: false });
+                            }}
+                        >
+                            📋 Copy
+                        </button>
+
+                        {/* Rotate 90° */}
+                        <button
+                            className="block w-full text-left px-3 py-1 hover:bg-black/5 dark:hover:bg-white/10"
+                            onClick={() => {
+                                const comp = currentPlan?.components.find(c => c.id === menu.componentId);
+                                if (comp) {
+                                    takeSnapshot();
+                                    useLayoutStore.getState().updateComponent(comp.id, {
+                                        rotation: ((comp.rotation || 0) + 90) % 360
+                                    });
+                                }
+                                setMenu({ ...menu, visible: false });
+                            }}
+                        >
+                            🔄 Rotate 90°
+                        </button>
+
+                        {/* Delete */}
+                        <button
+                            className="block w-full text-left px-3 py-1 text-red-500 hover:bg-red-500/10"
+                            onClick={() => {
+                                if (menu.componentId) {
+                                    selectElement(menu.componentId);
+                                    deleteSelected();
+                                }
+                                setMenu({ ...menu, visible: false });
+                            }}
+                        >
+                            🗑️ Delete
                         </button>
                     </div>
                 </>,

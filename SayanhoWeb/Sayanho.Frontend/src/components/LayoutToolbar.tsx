@@ -26,7 +26,8 @@ import {
     Check,
     X,
     RotateCcw,
-    Wand2
+    Wand2,
+    Type
 } from 'lucide-react';
 import { useLayoutStore } from '../store/useLayoutStore';
 import { useTheme } from '../context/ThemeContext';
@@ -41,6 +42,8 @@ interface LayoutToolbarProps {
     onScaleCalibrate?: () => void;
     showMagicWires: boolean;
     onToggleMagicWires: () => void;
+    isAddTextMode?: boolean;
+    onAddText?: () => void;
 }
 
 interface ToolButtonProps {
@@ -118,7 +121,9 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
     onUploadPlan,
     onScaleCalibrate,
     showMagicWires,
-    onToggleMagicWires
+    onToggleMagicWires,
+    isAddTextMode,
+    onAddText
 }) => {
     const { colors } = useTheme();
     const {
@@ -276,6 +281,15 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                         onClick={onToggleMagicWires}
                         variant={showMagicWires ? 'success' : 'default'}
                     />
+                    {onAddText && (
+                        <ToolButton
+                            icon={<Type size={16} />}
+                            label="Add Text Box"
+                            shortcut="T"
+                            active={isAddTextMode}
+                            onClick={onAddText}
+                        />
+                    )}
                 </div>
 
                 <Divider />

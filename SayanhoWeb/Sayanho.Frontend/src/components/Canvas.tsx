@@ -631,17 +631,22 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
 
         try {
             // For staging items, preserve the existing properties (including _layoutComponentId)
-            // and only add missing default properties
-            if (isStagingItem && newItem.properties.length > 0) {
-                // Staging item already has properties - don't overwrite them
-                // Just ensure we have the basics if anything is missing
+            // ALWAYS fetch API defaults and merge - don't skip for empty properties
+            if (isStagingItem) {
+                // Preserve any existing props like _layoutComponentId
                 const existingProps = newItem.properties[0] || {};
                 const props = await api.getItemProperties(itemData.name, 1);
                 if (props?.properties && props.properties.length > 0) {
-                    // Merge: keep existing props (like _layoutComponentId), add any missing from API
+                    // Merge: API defaults as BASE, existing props OVERRIDE (preserves _layoutComponentId)
                     newItem.properties = [{
-                        ...props.properties[0],  // API defaults as base
+                        ...props.properties[0],  // API defaults as base (Type, Power, Description, etc.)
                         ...existingProps         // Existing props override (preserves _layoutComponentId)
+                    }];
+                } else if (LOAD_ITEM_DEFAULTS[newItem.name]) {
+                    // Fallback to local defaults if API returns nothing
+                    newItem.properties = [{
+                        ...LOAD_ITEM_DEFAULTS[newItem.name],
+                        ...existingProps
                     }];
                 }
                 newItem.alternativeCompany1 = props?.alternativeCompany1 || newItem.alternativeCompany1;
@@ -661,8 +666,12 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
         } catch (err) {
             log('[UI][DROP] default properties load failed', { name: itemData.name, error: String(err) });
             // Fallback on error too - but still preserve staging item props
-            if (!isStagingItem && LOAD_ITEM_DEFAULTS[newItem.name]) {
-                newItem.properties = [{ ...LOAD_ITEM_DEFAULTS[newItem.name] }];
+            if (LOAD_ITEM_DEFAULTS[newItem.name]) {
+                const existingProps = isStagingItem ? (newItem.properties[0] || {}) : {};
+                newItem.properties = [{
+                    ...LOAD_ITEM_DEFAULTS[newItem.name],
+                    ...existingProps
+                }];
             }
         }
 

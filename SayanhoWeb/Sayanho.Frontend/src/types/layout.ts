@@ -230,6 +230,19 @@ export interface LayoutConnection {
     };
 }
 
+export interface LayoutTextItem {
+    id: string;
+    text: string;
+    position: Point;
+    fontSize: number;
+    fontFamily: string;
+    color: string;
+    align: 'left' | 'center' | 'right';
+    width?: number;
+    height?: number;
+    rotation?: number;
+}
+
 // ============================================================================
 // Floor Plan Container
 // ============================================================================
@@ -264,6 +277,7 @@ export interface FloorPlan {
     // Electrical layout
     components: LayoutComponent[];
     connections: LayoutConnection[];
+    textItems?: LayoutTextItem[];
 
     // Viewport state
     viewportX: number;

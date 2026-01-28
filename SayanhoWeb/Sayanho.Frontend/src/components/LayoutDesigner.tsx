@@ -48,6 +48,7 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
     const [syncMessage, setSyncMessage] = useState('');
     const [showMagicWires, setShowMagicWires] = useState(true);
     const [measuredPixels, setMeasuredPixels] = useState<number | undefined>(undefined);
+    const [isAddTextMode, setIsAddTextMode] = useState(false);
 
     // Keyboard shortcuts
     React.useEffect(() => {
@@ -322,6 +323,8 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                         setShowScaleCalibration(true);
                         setActiveTool('select');
                     }}
+                    isAddTextMode={isAddTextMode}
+                    onAddTextComplete={() => setIsAddTextMode(false)}
                 />
             </div>
 
@@ -339,6 +342,8 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                     }}
                     showMagicWires={showMagicWires}
                     onToggleMagicWires={() => setShowMagicWires(!showMagicWires)}
+                    isAddTextMode={isAddTextMode}
+                    onAddText={() => setIsAddTextMode(!isAddTextMode)}
                 />
             </div>
 

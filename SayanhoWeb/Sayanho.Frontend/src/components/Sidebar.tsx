@@ -298,20 +298,156 @@ export const Sidebar = () => {
         setExpandedGroups(prev => ({ ...prev, [group]: !prev[group] }));
     };
 
-    const handlePlaceStagingItem = (item: CanvasItem) => {
-        // Place item at default position or allow drag?
-        // For simplicity, we place at center view or 300,300, or just add logic.
-        // We reuse handleAddClick logic partially or just direct add.
-        // Staging items already have properties but might need geometry recalc?
-        // Usually they are fully formed.
+    const handlePlaceStagingItem = async (item: CanvasItem) => {
+        // Create a copy of the item with a new position
+        const newItem: CanvasItem = {
+            ...item,
+            position: { x: 300, y: 300 }
+        };
 
-        // We set position to visible area (simulated)
-        const itemToPlace = { ...item, x: 300, y: 300, uniqueID: crypto.randomUUID() }; // Generate new ID on placement or keep unique? 
-        // Sync usually keeps ID if we want linked. But if we drag from staging, we are effectively 'placing' it.
-        // Let's keep ID to maintain link to Layout if possible.
-        // BUT if user wants multiple placements?
-        // "Unplaced" implies moving FROM staging TO canvas.
-        addItem({ ...item, position: { x: 300, y: 300 } });
+        try {
+            // Fetch properties from API to get proper defaults
+            const props = await api.getItemProperties(item.name, 1);
+            if (props?.properties && props.properties.length > 0) {
+                // Merge: API defaults as base, existing staging props override (preserves _layoutComponentId etc)
+                const existingProps = newItem.properties?.[0] || {};
+                newItem.properties = [{
+                    ...props.properties[0],  // API defaults
+                    ...existingProps         // Existing props override
+                }];
+            } else if (LOAD_ITEM_DEFAULTS[newItem.name]) {
+                const existingProps = newItem.properties?.[0] || {};
+                newItem.properties = [{
+                    ...LOAD_ITEM_DEFAULTS[newItem.name],
+                    ...existingProps
+                }];
+            }
+
+            // Apply LOAD_ITEM_DEFAULTS if available
+            const defaults = LOAD_ITEM_DEFAULTS[newItem.name];
+            if (defaults && newItem.properties[0]) {
+                newItem.properties[0] = { ...defaults, ...newItem.properties[0] };
+            }
+
+            // Apply static definitions for geometry
+            const definition = getItemDefinition(newItem.name);
+            if (definition && !["HTPN", "VTPN", "SPN DB"].includes(newItem.name)) {
+                newItem.size = definition.size;
+                newItem.connectionPoints = definition.connectionPoints;
+            }
+
+            // Initialize Distribution Boards (Way-based)
+            if (["HTPN", "VTPN", "SPN DB"].includes(newItem.name)) {
+                if (!newItem.properties[0]) newItem.properties[0] = {};
+                let wayVal = newItem.properties[0]["Way"];
+                if (!wayVal || wayVal.includes(',')) {
+                    if (newItem.name === "SPN DB") wayVal = "2+4";
+                    else wayVal = "4";
+                }
+                newItem.properties[0]["Way"] = wayVal;
+
+                // Backend initialization
+                try {
+                    const initData = await api.initializeItem(newItem.name, newItem.properties);
+                    if (initData) {
+                        if (initData.incomer) newItem.incomer = initData.incomer;
+                        if (initData.outgoing) newItem.outgoing = initData.outgoing;
+                        if (initData.accessories) newItem.accessories = initData.accessories;
+                    }
+                } catch (err) {
+                    console.error(`[Sidebar] Failed to initialize staging item:`, err);
+                }
+
+                // Ensure outgoing defaults
+                const threshold = DefaultRulesEngine.getDefaultOutgoingThreshold(newItem.name);
+                if (threshold > 0 && newItem.outgoing && newItem.outgoing.length > 0) {
+                    const parseRating = (s: string) => {
+                        const m = (s || '').toString().match(/(\d+(?:\.\d+)?)/);
+                        return m ? parseFloat(m[1]) : NaN;
+                    };
+
+                    let defaultRating = "";
+                    try {
+                        const pole = newItem.name === "VTPN" ? "TP" : "SP";
+                        const mcb = await fetchProperties("MCB");
+
+                        const allRatings = sortOptionStringsAsc(
+                            Array.from(new Set(
+                                (mcb.properties || [])
+                                    .map(p => p["Current Rating"])
+                                    .filter(Boolean)
+                            ))
+                        );
+
+                        const poleRatingsRaw = (mcb.properties || [])
+                            .filter(p => {
+                                const pPole = (p["Pole"] || "").toString();
+                                if (!pPole) return false;
+                                return pPole === pole || pPole.includes(pole);
+                            })
+                            .map(p => p["Current Rating"])
+                            .filter(Boolean);
+                        const poleRatings = sortOptionStringsAsc(Array.from(new Set(poleRatingsRaw)));
+                        const ratings = poleRatings.length > 0 ? poleRatings : allRatings;
+
+                        defaultRating = ratings.find(r => {
+                            const v = parseRating(r);
+                            return Number.isFinite(v) && v >= threshold;
+                        }) || ratings[0] || "";
+                    } catch (e) {
+                        console.error('[Sidebar] Failed to fetch outgoing rating options for defaults', e);
+                    }
+
+                    if (defaultRating) {
+                        newItem.outgoing = newItem.outgoing.map(o => ({ ...(o || {}), "Current Rating": defaultRating }));
+                    }
+                }
+            }
+
+            // Calculate geometry
+            const result = calculateGeometry(newItem);
+            if (result) {
+                newItem.size = result.size;
+                newItem.connectionPoints = result.connectionPoints;
+            }
+        } catch (error) {
+            console.error('[Sidebar] Error initializing staging item props:', error);
+        }
+
+        // Fetch SVG Content if missing
+        if (!newItem.svgContent && newItem.iconPath) {
+            try {
+                const iconName = newItem.iconPath.split('/').pop();
+                const cacheKey = CacheService.generateKey('sidebar_svg', { name: newItem.name });
+                const cachedSvg = CacheService.get<string>(cacheKey);
+
+                if (cachedSvg) {
+                    newItem.svgContent = cachedSvg;
+                } else {
+                    const url = api.getIconUrl(iconName!);
+                    const encodedUrl = encodeURI(url);
+                    const response = await fetch(encodedUrl);
+                    if (response.ok) {
+                        const svgText = await response.text();
+                        CacheService.set(cacheKey, svgText);
+                        newItem.svgContent = svgText;
+                    }
+                }
+            } catch (e) {
+                console.error("Failed to fetch SVG content for staging item", e);
+            }
+        }
+
+        // Update visuals if needed
+        if (newItem.svgContent && newItem.properties[0]) {
+            const updatedSvg = updateItemVisuals(newItem);
+            if (updatedSvg) {
+                newItem.svgContent = updatedSvg;
+            }
+        }
+
+        // Add item to canvas and remove from staging
+        addItem(newItem);
         removeStagingItem(item.uniqueID);
     };
 

@@ -833,6 +833,7 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
                         windows: p.windows.filter(w => !idsToDelete.has(w.id)),
                         stairs: p.stairs.filter(s => !idsToDelete.has(s.id)),
                         components: p.components.filter(c => !idsToDelete.has(c.id)),
+                        textItems: (p.textItems || []).filter(t => !idsToDelete.has(t.id)),
                         connections: p.connections.filter(c =>
                             !idsToDelete.has(c.id) &&
                             !idsToDelete.has(c.sourceId) &&
