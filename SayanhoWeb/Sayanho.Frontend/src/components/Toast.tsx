@@ -10,11 +10,12 @@ interface ToastProps {
 
 export const Toast: React.FC<ToastProps> = ({ message, type = 'success', duration = 3000, onClose }) => {
     useEffect(() => {
-        const timer = setTimeout(() => {
-            onClose();
-        }, duration);
-
-        return () => clearTimeout(timer);
+        if (duration > 0) {
+            const timer = setTimeout(() => {
+                onClose();
+            }, duration);
+            return () => clearTimeout(timer);
+        }
     }, [duration, onClose]);
 
     const bgColor = type === 'success' ? 'bg-green-500' : type === 'error' ? 'bg-red-500' : 'bg-blue-500';

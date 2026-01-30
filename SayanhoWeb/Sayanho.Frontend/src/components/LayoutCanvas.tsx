@@ -53,6 +53,11 @@ interface LayoutCanvasProps {
     onCalibrationFinished?: (pixelLength: number) => void;
     isAddTextMode?: boolean;
     onAddTextComplete?: () => void;
+    // Visibility
+    showWalls?: boolean;
+    showDoors?: boolean;
+    showWindows?: boolean;
+    showRooms?: boolean;
 }
 
 // Room type to color mapping
@@ -84,10 +89,24 @@ const DETECTED_ROOM_PALETTE = [
     'rgba(34, 197, 94, 0.7)',     // emerald
 ];
 
-export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ onScaleChange, showMagicWires, onCalibrationFinished, isAddTextMode, onAddTextComplete }, ref) => {
+export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
+    onScaleChange,
+    showMagicWires,
+    onCalibrationFinished,
+    isAddTextMode,
+    onAddTextComplete,
+    showWalls = true,
+    showDoors = true,
+    showWindows = true,
+    showRooms = true
+}, ref) => {
     const stageRef = useRef<any>(null);
     const { theme, colors } = useTheme();
     const componentImages = useLayoutComponentImages();
+
+    // Text editing state
+    const [editingTextId, setEditingTextId] = useState<string | null>(null);
+    const [editText, setEditText] = useState('');
 
     // Layout store
     const {
@@ -2069,14 +2088,8 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                     }}
                     onDblClick={() => {
                         // Enable text editing
-                        const newText = prompt('Enter text:', textItem.text);
-                        if (newText !== null && currentPlan) {
-                            updateFloorPlan(currentPlan.id, {
-                                textItems: currentPlan.textItems?.map(t =>
-                                    t.id === textItem.id ? { ...t, text: newText } : t
-                                )
-                            });
-                        }
+                        setEditingTextId(textItem.id);
+                        setEditText(textItem.text);
                     }}
                     stroke={isSelected ? '#3b82f6' : undefined}
                     strokeWidth={isSelected ? 0.5 : 0}
@@ -2290,22 +2303,22 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
 
 
                     {/* Rooms */}
-                    {renderRooms()}
+                    {showRooms && renderRooms()}
 
                     {/* Magic Wires - AutoCAD-style SLD connection overlay */}
                     {renderMagicWires()}
 
                     {/* Unselected Layers (Bottom) */}
-                    {renderWalls(false)}
-                    {renderDoors(false)}
-                    {renderWindows(false)}
+                    {showWalls && renderWalls(false)}
+                    {showDoors && renderDoors(false)}
+                    {showWindows && renderWindows(false)}
                     {renderConnections(false)}
                     {renderComponents(false)}
 
                     {/* Selected Layers (Top) */}
-                    {renderWalls(true)}
-                    {renderDoors(true)}
-                    {renderWindows(true)}
+                    {showWalls && renderWalls(true)}
+                    {showDoors && renderDoors(true)}
+                    {showWindows && renderWindows(true)}
                     {renderConnections(true)}
                     {renderComponents(true)}
 
@@ -2573,6 +2586,114 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({ on
                     </div>
                 </div>
             )}
+
+
+            {/* Text Editing Overlay */}
+            {editingTextId && currentPlan && (() => {
+                const item = currentPlan.textItems?.find(t => t.id === editingTextId);
+                if (!item) return null;
+
+                return (
+                    <div
+                        style={{
+                            position: 'absolute',
+                            top: item.position.y * scale + position.y,
+                            left: item.position.x * scale + position.x,
+                            transform: 'translate(0%, -50%)', // Text origin is top-left, adjust for centering if needed
+                            pointerEvents: 'auto',
+                            zIndex: 1000
+                        }}
+                    >
+                        <div className="relative">
+                            <textarea
+                                autoFocus
+                                value={editText}
+                                onChange={(e) => setEditText(e.target.value)}
+                                onBlur={(e) => {
+                                    // Check if the new focus is inside our editor container (e.g. properties panel)
+                                    // The parent is the div.relative wrapper which contains both textarea and properties panel
+                                    if (e.relatedTarget && (e.target as HTMLElement).parentElement?.contains(e.relatedTarget as Node)) {
+                                        return;
+                                    }
+
+                                    if (currentPlan) {
+                                        updateFloorPlan(currentPlan.id, {
+                                            textItems: currentPlan.textItems?.map(t =>
+                                                t.id === editingTextId ? { ...t, text: editText } : t
+                                            )
+                                        });
+                                    }
+                                    setEditingTextId(null);
+                                }}
+                                onKeyDown={(e) => {
+                                    // Stop propagation to prevent global shortcuts (like Backspace/Delete)
+                                    e.stopPropagation();
+
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        (e.target as HTMLTextAreaElement).blur();
+                                    }
+                                    if (e.key === 'Escape') {
+                                        setEditingTextId(null);
+                                    }
+                                }}
+                                style={{
+                                    fontSize: `${(item.fontSize || 14) * scale}px`,
+                                    fontFamily: item.fontFamily || 'Arial',
+                                    color: item.color || (theme === 'dark' ? '#ffffff' : '#000000'),
+                                    background: 'rgba(0,0,0,0.5)',
+                                    border: '1px solid #3b82f6',
+                                    borderRadius: '4px',
+                                    padding: '4px',
+                                    outline: 'none',
+                                    resize: 'both',
+                                    overflow: 'hidden',
+                                    minWidth: '50px',
+                                    minHeight: '1.2em',
+                                    whiteSpace: 'pre'
+                                }}
+                            />
+                            {/* Properties Panel for Text (Font size, Color) - Floating nearby */}
+                            <div className="absolute top-full left-0 mt-2 bg-[#1e1e1e] border border-white/20 rounded p-2 flex flex-col gap-2 shadow-xl z-50 w-48"
+                                onMouseDown={(e) => e.stopPropagation()}
+                            >
+                                <div className="text-[10px] uppercase text-gray-500 font-bold">Text Properties</div>
+                                <div className="flex items-center gap-2">
+                                    <label className="text-xs text-gray-400 w-12">Size:</label>
+                                    <input
+                                        type="number"
+                                        value={item.fontSize || 14}
+                                        onChange={(e) => {
+                                            const size = parseInt(e.target.value) || 14;
+                                            updateFloorPlan(currentPlan.id, {
+                                                textItems: currentPlan.textItems?.map(t =>
+                                                    t.id === editingTextId ? { ...t, fontSize: size } : t
+                                                )
+                                            });
+                                        }}
+                                        className="w-16 bg-black/20 border border-white/10 rounded px-1 py-0.5 text-xs text-white"
+                                    />
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <label className="text-xs text-gray-400 w-12">Color:</label>
+                                    <input
+                                        type="color"
+                                        value={item.color || '#000000'}
+                                        onChange={(e) => {
+                                            updateFloorPlan(currentPlan.id, {
+                                                textItems: currentPlan.textItems?.map(t =>
+                                                    t.id === editingTextId ? { ...t, color: e.target.value } : t
+                                                )
+                                            });
+                                        }}
+                                        className="w-8 h-6 bg-transparent border-none p-0 cursor-pointer"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                );
+            })()}
         </div>
     );
 });

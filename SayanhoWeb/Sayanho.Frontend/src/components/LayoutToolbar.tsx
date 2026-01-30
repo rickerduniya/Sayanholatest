@@ -44,6 +44,15 @@ interface LayoutToolbarProps {
     onToggleMagicWires: () => void;
     isAddTextMode?: boolean;
     onAddText?: () => void;
+    // Layer toggles
+    showWalls?: boolean;
+    onToggleWalls?: () => void;
+    showDoors?: boolean;
+    onToggleDoors?: () => void;
+    showWindows?: boolean;
+    onToggleWindows?: () => void;
+    showRooms?: boolean;
+    onToggleRooms?: () => void;
 }
 
 interface ToolButtonProps {
@@ -123,7 +132,15 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
     showMagicWires,
     onToggleMagicWires,
     isAddTextMode,
-    onAddText
+    onAddText,
+    showWalls = true,
+    onToggleWalls,
+    showDoors = true,
+    onToggleDoors,
+    showWindows = true,
+    onToggleWindows,
+    showRooms = true,
+    onToggleRooms
 }) => {
     const { colors } = useTheme();
     const {
@@ -148,6 +165,7 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
     const activeTool = drawingState.activeTool;
     const [showDebug, setShowDebug] = useState(false);
     const [copied, setCopied] = useState(false);
+    const [showLayers, setShowLayers] = useState(false);
 
     const handleDetectRooms = async () => {
         console.error('[Detect Rooms] clicked');
@@ -274,6 +292,65 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                             onClick={() => onScaleCalibrate()}
                         />
                     )}
+                    {/* Layers Toggle */}
+                    <div className="relative">
+                        <ToolButton
+                            icon={<React.Fragment>
+                                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+                            </React.Fragment>}
+                            label="Toggle Layers"
+                            active={showLayers}
+                            onClick={() => setShowLayers(!showLayers)}
+                        />
+                        {showLayers && (
+                            <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 mb-2 w-48 bg-[#1e1e1e] border border-white/20 rounded-lg shadow-xl p-2 z-50 animate-fade-in flex flex-col gap-1">
+                                <div className="text-[10px] font-bold uppercase text-gray-400 px-2 pb-1 border-b border-white/10 mb-1">
+                                    Visibility
+                                </div>
+                                <button
+                                    onClick={() => onToggleWalls?.()}
+                                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/10 text-xs text-white"
+                                >
+                                    <div className={`w-3 h-3 rounded border ${showWalls ? 'bg-blue-500 border-blue-500' : 'border-gray-500'}`}>
+                                        {showWalls && <Check size={10} className="text-white" />}
+                                    </div>
+                                    <Pencil size={12} className="text-gray-400" />
+                                    Walls
+                                </button>
+                                <button
+                                    onClick={() => onToggleDoors?.()}
+                                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/10 text-xs text-white"
+                                >
+                                    <div className={`w-3 h-3 rounded border ${showDoors ? 'bg-blue-500 border-blue-500' : 'border-gray-500'}`}>
+                                        {showDoors && <Check size={10} className="text-white" />}
+                                    </div>
+                                    <DoorOpen size={12} className="text-gray-400" />
+                                    Doors
+                                </button>
+                                <button
+                                    onClick={() => onToggleWindows?.()}
+                                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/10 text-xs text-white"
+                                >
+                                    <div className={`w-3 h-3 rounded border ${showWindows ? 'bg-blue-500 border-blue-500' : 'border-gray-500'}`}>
+                                        {showWindows && <Check size={10} className="text-white" />}
+                                    </div>
+                                    <Grid3X3 size={12} className="text-gray-400" />
+                                    Windows
+                                </button>
+                                <button
+                                    onClick={() => onToggleRooms?.()}
+                                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/10 text-xs text-white"
+                                >
+                                    <div className={`w-3 h-3 rounded border ${showRooms ? 'bg-blue-500 border-blue-500' : 'border-gray-500'}`}>
+                                        {showRooms && <Check size={10} className="text-white" />}
+                                    </div>
+                                    <Square size={12} className="text-gray-400" />
+                                    Rooms
+                                </button>
+                            </div>
+                        )}
+                    </div>
+
                     <ToolButton
                         icon={<Zap size={16} className={showMagicWires ? "fill-current" : ""} />}
                         label="Magic Wiring"

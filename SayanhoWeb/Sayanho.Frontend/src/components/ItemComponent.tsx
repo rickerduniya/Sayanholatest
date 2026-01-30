@@ -268,7 +268,7 @@ export const ItemComponent: React.FC<ItemComponentProps> = ({
             )}
 
             {/* Connection Points */}
-            {Object.entries(item.connectionPoints).map(([key, point]) => {
+            {(showConnectionPoints !== false) && Object.entries(item.connectionPoints).map(([key, point]) => {
                 const k = key.toLowerCase();
                 const isInput = k === 'in' || k.startsWith('in');
                 const pointImg = isInput ? inPointImg : outPointImg;

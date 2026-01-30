@@ -41,6 +41,12 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
     // SLD store for sync
     const { addItem, getCurrentSheet, stagingItems, setStagingItems, sheets, activeSheetId } = useStore();
 
+    // View toggles
+    const [showWalls, setShowWalls] = useState(true);
+    const [showDoors, setShowDoors] = useState(true);
+    const [showWindows, setShowWindows] = useState(true);
+    const [showRooms, setShowRooms] = useState(true);
+
     const [scale, setScale] = useState(0.5);
     const [showUploadDialog, setShowUploadDialog] = useState(false);
     const [showScaleCalibration, setShowScaleCalibration] = useState(false);
@@ -54,8 +60,10 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
     React.useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.defaultPrevented) return;
-            // Ignore if input/textarea is focused
-            if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+            // Ignore if input/textarea is focused or content is editable
+            const target = e.target as HTMLElement;
+            const tagName = target.tagName?.toLowerCase();
+            if (tagName === 'input' || tagName === 'textarea' || target.isContentEditable) return;
 
             if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
                 e.preventDefault();
@@ -318,6 +326,10 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                     ref={canvasRef}
                     onScaleChange={setScale}
                     showMagicWires={showMagicWires}
+                    showWalls={showWalls}
+                    showDoors={showDoors}
+                    showWindows={showWindows}
+                    showRooms={showRooms}
                     onCalibrationFinished={(pixels) => {
                         setMeasuredPixels(pixels);
                         setShowScaleCalibration(true);
@@ -342,6 +354,14 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                     }}
                     showMagicWires={showMagicWires}
                     onToggleMagicWires={() => setShowMagicWires(!showMagicWires)}
+                    showWalls={showWalls}
+                    onToggleWalls={() => setShowWalls(!showWalls)}
+                    showDoors={showDoors}
+                    onToggleDoors={() => setShowDoors(!showDoors)}
+                    showWindows={showWindows}
+                    onToggleWindows={() => setShowWindows(!showWindows)}
+                    showRooms={showRooms}
+                    onToggleRooms={() => setShowRooms(!showRooms)}
                     isAddTextMode={isAddTextMode}
                     onAddText={() => setIsAddTextMode(!isAddTextMode)}
                 />

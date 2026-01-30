@@ -63,6 +63,7 @@ function DesignerApp() {
     // Toast State
     const [toastMessage, setToastMessage] = useState<string | null>(null);
     const [toastType, setToastType] = useState<'success' | 'error' | 'info'>('success');
+    const [toastDuration, setToastDuration] = useState(3000);
 
     const canvasRef = useRef<CanvasRef>(null);
     const layoutRef = useRef<LayoutDesignerRef>(null);
@@ -94,6 +95,7 @@ function DesignerApp() {
             const timer = setTimeout(() => {
                 setToastMessage('Waking up backend server... this may take up to 30 seconds.');
                 setToastType('info');
+                setToastDuration(0); // 0 = Keep visible indefinitely until manually closed/replaced
                 notified = true;
             }, 2000);
 
@@ -103,6 +105,7 @@ function DesignerApp() {
                 if (notified) {
                     setToastMessage('Backend is ready!');
                     setToastType('success');
+                    setToastDuration(3000); // Revert to short duration
                 }
             } catch (e) {
                 console.error("Backend validation failed", e);
@@ -742,6 +745,7 @@ function DesignerApp() {
                 <Toast
                     message={toastMessage}
                     type={toastType}
+                    duration={toastDuration}
                     onClose={() => setToastMessage(null)}
                 />
             )}
