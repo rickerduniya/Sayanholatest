@@ -381,7 +381,7 @@ namespace Sayanho.Core.Logic
                     else if (item.Name == "Point Switch Board")
                     {
                         // Count how many connectors have this item as source
-                        int points = connectors.Count(c => c.SourceItem.UniqueID == item.UniqueID);
+                        int points = connectors.Count(c => c.SourceItem != null && c.SourceItem.UniqueID == item.UniqueID);
                         if (points>0)
                         {
                             Calculation(item.Name,propertiesDictionary, 1, item.AlternativeCompany1, item.AlternativeCompany2, -1, points, 2);

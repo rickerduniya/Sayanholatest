@@ -954,8 +954,8 @@ namespace Sayanho.Core.Logic
 
         private string GetConnectorKey(Connector c)
         {
-            var sId = c.SourceItem?.UniqueID.ToString() ?? "null";
-            var tId = c.TargetItem?.UniqueID.ToString() ?? "null";
+            var sId = c.SourceItem?.UniqueID ?? "null";
+            var tId = c.TargetItem?.UniqueID ?? "null";
             var sKey = c.SourcePointKey ?? "";
             var tKey = c.TargetPointKey ?? "";
             return $"{sId}:{sKey}->{tId}:{tKey}";

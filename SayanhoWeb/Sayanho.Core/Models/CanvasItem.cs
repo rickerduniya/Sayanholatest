@@ -1,11 +1,11 @@
+using System;
 using System.Drawing;
-using System.Text.Json.Serialization;
 
 namespace Sayanho.Core.Models
 {
     public class CanvasItem
     {
-        public Guid UniqueID { get; set; }
+        public string UniqueID { get; set; } = Guid.NewGuid().ToString();
         public string Name { get; set; } = string.Empty;
         public Point Position { get; set; }
         public Size Size { get; set; }

@@ -35,17 +35,13 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
         deleteSelected,
         undo,
         redo,
-        setActiveTool
+        setActiveTool,
+        visibility: { showWalls, showDoors, showWindows, showRooms },
+        setLayoutVisibility
     } = useLayoutStore();
 
     // SLD store for sync
     const { addItem, getCurrentSheet, stagingItems, setStagingItems, sheets, activeSheetId } = useStore();
-
-    // View toggles
-    const [showWalls, setShowWalls] = useState(true);
-    const [showDoors, setShowDoors] = useState(true);
-    const [showWindows, setShowWindows] = useState(true);
-    const [showRooms, setShowRooms] = useState(true);
 
     const [scale, setScale] = useState(0.5);
     const [showUploadDialog, setShowUploadDialog] = useState(false);
@@ -355,13 +351,13 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                     showMagicWires={showMagicWires}
                     onToggleMagicWires={() => setShowMagicWires(!showMagicWires)}
                     showWalls={showWalls}
-                    onToggleWalls={() => setShowWalls(!showWalls)}
+                    onToggleWalls={() => setLayoutVisibility('showWalls', !showWalls)}
                     showDoors={showDoors}
-                    onToggleDoors={() => setShowDoors(!showDoors)}
+                    onToggleDoors={() => setLayoutVisibility('showDoors', !showDoors)}
                     showWindows={showWindows}
-                    onToggleWindows={() => setShowWindows(!showWindows)}
+                    onToggleWindows={() => setLayoutVisibility('showWindows', !showWindows)}
                     showRooms={showRooms}
-                    onToggleRooms={() => setShowRooms(!showRooms)}
+                    onToggleRooms={() => setLayoutVisibility('showRooms', !showRooms)}
                     isAddTextMode={isAddTextMode}
                     onAddText={() => setIsAddTextMode(!isAddTextMode)}
                 />

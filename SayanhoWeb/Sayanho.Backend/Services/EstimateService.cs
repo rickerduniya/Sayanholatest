@@ -36,8 +36,9 @@ namespace Sayanho.Backend.Services
             }
 
             // Fix: Link connectors to items (Deserialization doesn't restore references automatically)
-            // Use ToString() because UniqueID is Guid but connector IDs are strings
-            var itemLookup = allItems.ToDictionary(i => i.UniqueID.ToString(), i => i, StringComparer.OrdinalIgnoreCase);
+            var itemLookup = allItems
+                .Where(i => !string.IsNullOrWhiteSpace(i.UniqueID))
+                .ToDictionary(i => i.UniqueID, i => i, StringComparer.OrdinalIgnoreCase);
             foreach (var connector in allConnectors)
             {
                 if (connector.SourceItem == null && !string.IsNullOrEmpty(connector.SourceItemId) && itemLookup.ContainsKey(connector.SourceItemId))

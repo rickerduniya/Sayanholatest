@@ -97,7 +97,11 @@ namespace Sayanho.Core.Logic
             var itemLookup = new Dictionary<string, CanvasItem>();
             foreach (var item in allItems)
             {
-                itemLookup[item.UniqueID.ToString()] = item;
+                if (string.IsNullOrWhiteSpace(item.UniqueID))
+                {
+                    item.UniqueID = Guid.NewGuid().ToString();
+                }
+                itemLookup[item.UniqueID] = item;
             }
 
             // Reconstruct references for each connector using the item IDs

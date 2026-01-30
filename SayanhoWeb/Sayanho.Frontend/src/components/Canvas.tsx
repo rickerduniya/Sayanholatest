@@ -167,6 +167,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
         targetKey: string;
     } | null>(null);
     const [hideConnectionPoints, setHideConnectionPoints] = useState(false); // For image export
+    const [isExporting, setIsExporting] = useState(false);
 
     // Zoom and Pan state
     const [scale, setScale] = useState(currentSheet?.scale || 1);
@@ -403,6 +404,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
         try {
             // Hide connection points before export
             setHideConnectionPoints(true);
+            setIsExporting(true);
 
             // Wait for state update to propagate and re-render
             await new Promise(resolve => setTimeout(resolve, 300));
@@ -496,6 +498,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
         } finally {
             // Restore connection points visibility
             setHideConnectionPoints(false);
+            setIsExporting(false);
         }
     };
 
@@ -1274,6 +1277,11 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
         backgroundPosition: `${position.x}px ${position.y}px`
     };
 
+    const renderShowCurrentValues = isExporting
+        ? ApplicationSettings.getShowCurrentValues()
+        : (showCurrentValues && ApplicationSettings.getShowCurrentValues());
+    const renderShowCableSpecs = ApplicationSettings.getShowCableSpecs();
+
     return (
         <div
             ref={containerRef}
@@ -1444,7 +1452,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                                     listening={false}
                                 />
                                 {/* Arrows */}
-                                {ApplicationSettings.getShowCurrentValues() && pathData.connector.currentValues && (
+                                {renderShowCurrentValues && pathData.connector.currentValues && (
                                     pathData.points.map((p, idx) => {
                                         if (idx === 0 || idx >= pathData.points.length - 1) return null;
                                         const start = pathData.points[idx];
@@ -1474,7 +1482,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                                         );
                                     })
                                 )}
-                                {pathData.specText && (
+                                {renderShowCableSpecs && pathData.specText && (
                                     <Text
                                         x={pathData.specText.specTextPosition.x}
                                         y={pathData.specText.specTextPosition.y}
@@ -1487,7 +1495,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                                     />
                                 )}
                                 {/* Current Value Text */}
-                                {showCurrentValues && pathData.connector.currentValues && (() => {
+                                {renderShowCurrentValues && pathData.connector.currentValues && (() => {
                                     const currentValues = pathData.connector.currentValues;
                                     const current = currentValues["Current"];
                                     const phase = currentValues["Phase"];

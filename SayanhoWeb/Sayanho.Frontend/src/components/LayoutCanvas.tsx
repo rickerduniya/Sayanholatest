@@ -17,7 +17,7 @@ import {
     LayoutComponentType,
     OcrItem
 } from '../types/layout';
-import { Point } from '../types';
+import { Connector, Point } from '../types';
 import {
     snapToWall,
     constrainWallAngle,
@@ -37,6 +37,7 @@ import {
 } from '../utils/LayoutComponentDefinitions';
 import { layoutImageStore } from '../utils/LayoutImageStore';
 import { useLayoutComponentImages } from '../hooks/useLayoutComponentImages';
+import { ApplicationSettings } from '../utils/ApplicationSettings';
 
 export interface LayoutCanvasRef {
     saveImage: () => void;
@@ -46,6 +47,29 @@ export interface LayoutCanvasRef {
     setZoom: (scale: number) => void;
     fitView: () => void;
 }
+
+const getSldConnectorColor = (connector: Connector, theme: string): string => {
+    const useColor = ApplicationSettings.getSaveImageInColor();
+    if (!useColor) return theme === 'dark' ? '#FFFFFF' : '#000000';
+
+    const phase = connector.currentValues?.["Phase"];
+    if (phase === "R") return '#FF4500';
+    if (phase === "Y") return '#FFD700';
+    if (phase === "B") return '#0000CD';
+
+    const srcName = connector.sourceItem?.name;
+    const dstName = connector.targetItem?.name;
+    const srcKey = connector.sourcePointKey || '';
+    const dstKey = connector.targetPointKey || '';
+
+    if (srcName === "HTPN" || dstName === "HTPN") {
+        if (srcKey.includes("R") || dstKey.includes("R")) return '#FF0000';
+        if (srcKey.includes("Y") || dstKey.includes("Y")) return '#FFD700';
+        if (srcKey.includes("B") || dstKey.includes("B")) return '#0000FF';
+    }
+
+    return theme === 'dark' ? '#FFFFFF' : '#000000';
+};
 
 interface LayoutCanvasProps {
     onScaleChange?: (scale: number) => void;
@@ -134,8 +158,13 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
         // Staging components
         removeStagingComponent,
         markStagingComponentPlaced,
-        isStagingComponentPlaced
+        isStagingComponentPlaced,
+        // OCR Settings
+        ocrSettings,
+        setOcrSettings
     } = useLayoutStore();
+
+    const { showOcr, minConfidence: ocrMinConfidence, query: ocrQuery, showBoxes: showOcrBoxes } = ocrSettings;
 
     const currentPlan = getCurrentFloorPlan();
 
@@ -171,37 +200,8 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
     const [hoverInfo, setHoverInfo] = useState<{ x: number, y: number, text: string } | null>(null);
     const [ocrHoverInfo, setOcrHoverInfo] = useState<{ x: number, y: number, text: string } | null>(null);
 
-    const [showOcr, setShowOcr] = useState(true);
-    const [ocrMinConfidence, setOcrMinConfidence] = useState(60);
-    const [ocrQuery, setOcrQuery] = useState('');
-    const [showOcrBoxes, setShowOcrBoxes] = useState(false);
     const [selectedOcrId, setSelectedOcrId] = useState<string | null>(null);
     const [ocrCopied, setOcrCopied] = useState(false);
-
-    useEffect(() => {
-        try {
-            const raw = localStorage.getItem('layout_ocr_settings');
-            if (!raw) return;
-            const s = JSON.parse(raw);
-            if (typeof s.showOcr === 'boolean') setShowOcr(s.showOcr);
-            if (typeof s.ocrMinConfidence === 'number') setOcrMinConfidence(s.ocrMinConfidence);
-            if (typeof s.ocrQuery === 'string') setOcrQuery(s.ocrQuery);
-            if (typeof s.showOcrBoxes === 'boolean') setShowOcrBoxes(s.showOcrBoxes);
-        } catch {
-        }
-        // Only once
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    useEffect(() => {
-        try {
-            localStorage.setItem(
-                'layout_ocr_settings',
-                JSON.stringify({ showOcr, ocrMinConfidence, ocrQuery, showOcrBoxes })
-            );
-        } catch {
-        }
-    }, [showOcr, ocrMinConfidence, ocrQuery, showOcrBoxes]);
 
     useEffect(() => {
         if (!currentPlan) return;
@@ -309,9 +309,11 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
             sourcePos: { x: number; y: number };
             targetPos: { x: number; y: number };
             key: string;
+            color: string;
         }> = [];
 
-        for (const connector of sldConnectors) {
+        for (let i = 0; i < sldConnectors.length; i++) {
+            const connector = sldConnectors[i] as Connector;
             const srcLayoutId = connector.sourceItem?.properties?.[0]?.['_layoutComponentId'];
             const dstLayoutId = connector.targetItem?.properties?.[0]?.['_layoutComponentId'];
 
@@ -325,12 +327,13 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
             wires.push({
                 sourcePos: srcPos,
                 targetPos: dstPos,
-                key: `${srcLayoutId}-${dstLayoutId}`
+                key: `${srcLayoutId}-${dstLayoutId}-${connector.sourcePointKey}-${connector.targetPointKey}-${i}`,
+                color: getSldConnectorColor(connector, theme)
             });
         }
 
         return wires;
-    }, [currentPlan?.components, sldConnectors, showMagicWires]);
+    }, [currentPlan?.components, sldConnectors, showMagicWires, theme]);
 
     // Container ref for size
     const containerRef = useRef<HTMLDivElement>(null);
@@ -1912,7 +1915,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
         });
 
         return magicWires.map((wire, globalIndex) => {
-            const { sourcePos, targetPos, key } = wire;
+            const { sourcePos, targetPos, key, color } = wire;
 
             // Calculate basic geometry
             const midX = (sourcePos.x + targetPos.x) / 2;
@@ -1998,7 +2001,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                         {/* Main wire */}
                         <Line
                             points={points}
-                            stroke="#475569"
+                            stroke={color}
                             strokeWidth={1.2}
                             lineCap="round"
                             lineJoin="round"
@@ -2007,8 +2010,8 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                             dash={[6, 4]}
                         />
                         {/* Connection dots */}
-                        <Circle x={sourcePos.x} y={sourcePos.y} radius={2.5} fill="#334155" />
-                        <Circle x={targetPos.x} y={targetPos.y} radius={2.5} fill="#334155" />
+                        <Circle x={sourcePos.x} y={sourcePos.y} radius={2.5} fill={color} />
+                        <Circle x={targetPos.x} y={targetPos.y} radius={2.5} fill={color} />
                     </Group>
                 );
             }
@@ -2037,7 +2040,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                     {/* Main wire */}
                     <Line
                         points={points}
-                        stroke="#475569"
+                        stroke={color}
                         strokeWidth={1.2}
                         lineCap="round"
                         lineJoin="round"
@@ -2046,8 +2049,8 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                         dash={[6, 4]}
                     />
                     {/* Connection dots */}
-                    <Circle x={sourcePos.x} y={sourcePos.y} radius={2.5} fill="#334155" />
-                    <Circle x={targetPos.x} y={targetPos.y} radius={2.5} fill="#334155" />
+                    <Circle x={sourcePos.x} y={sourcePos.y} radius={2.5} fill={color} />
+                    <Circle x={targetPos.x} y={targetPos.y} radius={2.5} fill={color} />
                 </Group>
             );
         }).filter(Boolean);
@@ -2509,7 +2512,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                         <div className="text-xs font-semibold">OCR Labels</div>
                         <button
                             className="text-xs px-2 py-1 rounded hover:bg-black/10 dark:hover:bg-white/10"
-                            onClick={() => setShowOcr(!showOcr)}
+                            onClick={() => setOcrSettings({ showOcr: !showOcr })}
                         >
                             {showOcr ? 'Hide' : 'Show'}
                         </button>
@@ -2526,7 +2529,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                                 min={0}
                                 max={100}
                                 value={ocrMinConfidence}
-                                onChange={(e) => setOcrMinConfidence(parseInt(e.target.value, 10) || 0)}
+                                onChange={(e) => setOcrSettings({ minConfidence: parseInt(e.target.value, 10) || 0 })}
                                 className="w-full"
                             />
                         </div>
@@ -2535,7 +2538,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                             <div className="text-[11px] opacity-80 mb-1">Search</div>
                             <input
                                 value={ocrQuery}
-                                onChange={(e) => setOcrQuery(e.target.value)}
+                                onChange={(e) => setOcrSettings({ query: e.target.value })}
                                 placeholder="e.g. DB, KITCHEN, 12A"
                                 className="w-full px-2 py-1 rounded border text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
                                 style={{
@@ -2550,7 +2553,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                             <input
                                 type="checkbox"
                                 checked={showOcrBoxes}
-                                onChange={(e) => setShowOcrBoxes(e.target.checked)}
+                                onChange={(e) => setOcrSettings({ showBoxes: e.target.checked })}
                             />
                             Show bounding boxes
                         </label>

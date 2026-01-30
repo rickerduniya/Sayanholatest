@@ -142,6 +142,24 @@ interface LayoutStoreState {
     // Wall Post-Processing
     resetWallsToOriginal: () => void;
     applySmartStitch: () => void;
+
+    // Element Visibility
+    visibility: {
+        showWalls: boolean;
+        showDoors: boolean;
+        showWindows: boolean;
+        showRooms: boolean;
+    };
+    setLayoutVisibility: (key: 'showWalls' | 'showDoors' | 'showWindows' | 'showRooms', value: boolean) => void;
+
+    // OCR Settings
+    ocrSettings: {
+        showOcr: boolean;
+        minConfidence: number;
+        query: string;
+        showBoxes: boolean;
+    };
+    setOcrSettings: (settings: Partial<LayoutStoreState['ocrSettings']>) => void;
 }
 
 const MAX_HISTORY = 20;
@@ -197,6 +215,28 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
     redoStack: [],
     apiDebugData: null,
     setApiDebugData: (data) => set({ apiDebugData: data }),
+
+    // Element Visibility
+    visibility: {
+        showWalls: true,
+        showDoors: true,
+        showWindows: true,
+        showRooms: true
+    },
+    setLayoutVisibility: (key, value) => set((state) => ({
+        visibility: { ...state.visibility, [key]: value }
+    })),
+
+    // OCR Settings
+    ocrSettings: {
+        showOcr: true,
+        minConfidence: 60,
+        query: '',
+        showBoxes: false
+    },
+    setOcrSettings: (settings) => set((state) => ({
+        ocrSettings: { ...state.ocrSettings, ...settings }
+    })),
 
     // Wall Post-Processing
     resetWallsToOriginal: () => {
