@@ -1077,6 +1077,18 @@ export const useStore = create<StoreState>((set, get) => ({
             idMap.set(item.uniqueID, newId);
             newItem.uniqueID = newId;
 
+            // A pasted SLD item is a new electrical component, not another
+            // representation of the source item. Give it a new Layout identity
+            // so SLD → Layout sync adds it to Unplaced instead of treating it
+            // as the already placed source component.
+            newItem.properties = newItem.properties?.map((property: Record<string, string>) => {
+                const copiedProperty = { ...property };
+                if (copiedProperty['_layoutComponentId']) {
+                    copiedProperty['_layoutComponentId'] = `comp_${crypto.randomUUID()}`;
+                }
+                return copiedProperty;
+            }) ?? [];
+
             // Apply offset
             // Apply offset
             if (position) {
