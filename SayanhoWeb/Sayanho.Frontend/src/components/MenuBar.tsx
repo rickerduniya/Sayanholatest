@@ -10,11 +10,14 @@ interface MenuBarProps {
     onGenerateEstimate: () => void;
     onOpenVoltageDrop: () => void;
     onOpenNetworkMonitor: () => void;
+    onSaveLocal: () => void;
+    onLoadLocal: () => void;
 }
 
 export const MenuBar: React.FC<MenuBarProps> = ({
     onLoad, onSave, onSaveAs, onSaveImage,
-    onSettings, onGenerateEstimate, onOpenVoltageDrop, onOpenNetworkMonitor
+    onSettings, onGenerateEstimate, onOpenVoltageDrop, onOpenNetworkMonitor,
+    onSaveLocal, onLoadLocal
 }) => {
     const { colors } = useTheme();
     const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -78,6 +81,10 @@ export const MenuBar: React.FC<MenuBarProps> = ({
                         <MenuItem label="Load Project" onClick={onLoad} />
                         <MenuItem label="Save Project" onClick={onSave} />
                         <MenuItem label="Save Project As..." onClick={onSaveAs} />
+                        <MenuSeparator />
+                        <MenuItem label="Save to File" onClick={onSaveLocal} />
+                        <MenuItem label="Load from File" onClick={onLoadLocal} />
+                        <MenuSeparator />
                         <MenuItem label="Save as Image" onClick={onSaveImage} />
                         <MenuSeparator />
                         <MenuItem label="Generate Estimate" onClick={onGenerateEstimate} />

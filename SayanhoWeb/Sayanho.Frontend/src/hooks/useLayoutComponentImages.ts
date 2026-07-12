@@ -13,19 +13,19 @@ export function useLayoutComponentImages() {
         const loadImages = async () => {
             const loadedImages: Record<string, HTMLImageElement> = {};
             const promises: Promise<void>[] = [];
+            // Cache-bust so browsers always load fresh SVGs after updates
+            const v = '2';
 
             Object.values(LAYOUT_COMPONENT_DEFINITIONS).forEach(def => {
                 if (!def.svgIcon) return;
 
                 const promise = new Promise<void>((resolve) => {
                     const img = new Image();
-                    // Use full path (e.g. 'layout/light.svg')
-                    // Do NOT strip directory as backend structure likely matches
                     const iconName = def.svgIcon;
 
                     if (iconName) {
-                        img.src = api.getIconUrl(iconName);
-                        img.crossOrigin = 'Anonymous'; // Needed if API is on different domain
+                        img.src = `${api.getIconUrl(iconName)}?v=${v}`;
+                        img.crossOrigin = 'Anonymous';
 
                         img.onload = () => {
                             loadedImages[def.type] = img;
@@ -34,7 +34,7 @@ export function useLayoutComponentImages() {
 
                         img.onerror = () => {
                             console.warn(`[LayoutImages] Failed to load icon for ${def.type}: ${def.svgIcon}`);
-                            resolve(); // Resolve to allow others to finish
+                            resolve();
                         };
                     } else {
                         resolve();

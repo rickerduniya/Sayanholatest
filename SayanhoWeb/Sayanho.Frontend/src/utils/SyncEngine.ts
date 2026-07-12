@@ -105,7 +105,7 @@ export function calculateRoomLoad(room: Room, components: LayoutComponent[]): Lo
         // Categorize load
         if (def.category === 'lighting') {
             lightingLoad += watts;
-        } else if (def.category === 'hvac') {
+        } else if (def.category === 'appliances' || def.category === 'fans') {
             hvacLoad += watts;
         } else {
             powerLoad += watts;
@@ -131,7 +131,7 @@ export function calculateFloorPlanLoad(floorPlan: FloorPlan): LoadSummary {
         const watts = def?.defaultWattage || 0;
 
         if (def?.category === 'lighting') acc.lightingLoad += watts;
-        else if (def?.category === 'hvac') acc.hvacLoad += watts;
+        else if (def?.category === 'appliances' || def?.category === 'fans') acc.hvacLoad += watts;
         else acc.powerLoad += watts;
         acc.totalLoad += watts;
 

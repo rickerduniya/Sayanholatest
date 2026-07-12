@@ -24,7 +24,7 @@ export const LayoutSidebar: React.FC = () => {
 
     const [searchQuery, setSearchQuery] = useState('');
     const [expandedCategories, setExpandedCategories] = useState<Set<string>>(
-        new Set(['lighting', 'power', 'switches', 'distribution'])
+        new Set(['distribution', 'lighting'])
     );
     const [hoveredComponent, setHoveredComponent] = useState<LayoutComponentType | null>(null);
 
@@ -70,19 +70,15 @@ export const LayoutSidebar: React.FC = () => {
         drawingState.activeTool === 'component' &&
         drawingState.selectedComponentType === type;
 
-    // Enhanced category styling - matches SLD sidebar
     const CATEGORY_STYLES: Record<string, string> = {
-        lighting: 'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200',
-        power: 'bg-green-100 text-green-900 dark:bg-green-900/40 dark:text-green-200',
-        switches: 'bg-blue-100 text-blue-900 dark:bg-blue-900/40 dark:text-blue-200',
-        switchboards: 'bg-slate-200 text-slate-900 dark:bg-slate-700/60 dark:text-slate-200',
-        hvac: 'bg-cyan-100 text-cyan-900 dark:bg-cyan-900/40 dark:text-cyan-200',
-        distribution: 'bg-purple-100 text-purple-900 dark:bg-purple-900/40 dark:text-purple-200',
-        switchgear: 'bg-orange-100 text-orange-900 dark:bg-orange-900/40 dark:text-orange-200',
-        meters: 'bg-indigo-100 text-indigo-900 dark:bg-indigo-900/40 dark:text-indigo-200',
-        appliances: 'bg-pink-100 text-pink-900 dark:bg-pink-900/40 dark:text-pink-200',
+        distribution:   'bg-purple-100 text-purple-900 dark:bg-purple-900/40 dark:text-purple-200',
+        switchgear:     'bg-orange-100 text-orange-900 dark:bg-orange-900/40 dark:text-orange-200',
+        appliances:     'bg-pink-100 text-pink-900 dark:bg-pink-900/40 dark:text-pink-200',
+        lighting:       'bg-amber-100 text-amber-900 dark:bg-amber-900/40 dark:text-amber-200',
+        fans:           'bg-cyan-100 text-cyan-900 dark:bg-cyan-900/40 dark:text-cyan-200',
+        switchboards:   'bg-slate-200 text-slate-900 dark:bg-slate-700/60 dark:text-slate-200',
         infrastructure: 'bg-rose-100 text-rose-900 dark:bg-rose-900/40 dark:text-rose-200',
-        safety: 'bg-red-100 text-red-900 dark:bg-red-900/40 dark:text-red-200'
+        others:         'bg-green-100 text-green-900 dark:bg-green-900/40 dark:text-green-200',
     };
 
     // Render a single component button

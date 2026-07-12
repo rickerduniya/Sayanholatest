@@ -696,13 +696,15 @@ export const ChatPanel = () => {
                             </div>
 
                             <div
-                                className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm select-text ${isUser
+                                className={`max-w-[85%] rounded-2xl px-4 py-3 text-sm shadow-sm select-text overflow-hidden ${isUser
                                     ? 'bg-blue-600 text-white rounded-tr-none'
                                     : 'bg-white dark:bg-gray-800 border rounded-tl-none'
                                     }`}
                                 style={{
                                     borderColor: isUser ? 'transparent' : colors.border,
-                                    color: isUser ? 'white' : colors.text
+                                    color: isUser ? 'white' : colors.text,
+                                    overflowWrap: 'anywhere',
+                                    wordBreak: 'break-word',
                                 }}
                             >
                                 {isUser ? (
@@ -710,7 +712,10 @@ export const ChatPanel = () => {
                                 ) : (
                                     <div className="space-y-3">
                                         {hasContent && (
-                                            <div className="prose prose-sm dark:prose-invert max-w-none select-text">
+                                            <div
+                                                className="prose prose-sm dark:prose-invert max-w-none select-text"
+                                                style={{ overflowWrap: 'anywhere', wordBreak: 'break-word' }}
+                                            >
                                                 <ReactMarkdown>{displayContent}</ReactMarkdown>
                                             </div>
                                         )}

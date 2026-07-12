@@ -160,6 +160,10 @@ interface LayoutStoreState {
         showBoxes: boolean;
     };
     setOcrSettings: (settings: Partial<LayoutStoreState['ocrSettings']>) => void;
+
+    // Local project import — bulk-load all layout state
+    loadProject: (floorPlans: FloorPlan[], activeFloorPlanId: string | null,
+                  stagingComponents: LayoutComponent[], placedIds: string[]) => void;
 }
 
 const MAX_HISTORY = 20;
@@ -1051,5 +1055,19 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
             stagingComponents: next.stagingComponents ?? state.stagingComponents,
             placedStagingComponentIds: new Set(next.placedStagingComponentIds ?? Array.from(state.placedStagingComponentIds))
         };
+    }),
+
+    // =========================================================================
+    // Local Project Import — bulk replace all layout state
+    // =========================================================================
+    loadProject: (floorPlans, activeFloorPlanId, stagingComponents, placedIds) => set({
+        floorPlans,
+        activeFloorPlanId: activeFloorPlanId || (floorPlans[0]?.id ?? null),
+        stagingComponents,
+        placedStagingComponentIds: new Set(placedIds),
+        undoStack: [],
+        redoStack: [],
+        selectedElementIds: [],
+        drawingState: createDefaultDrawingState(),
     })
 }));

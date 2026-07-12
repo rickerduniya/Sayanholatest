@@ -230,3 +230,29 @@ button {
     color: #f1f5f9;
     /* slate-100 */
 }
+
+/* ============================================================
+   Chat Panel — Prose text wrapping overrides
+   Ensures LLM responses (code, URLs, tables) stay within the bubble.
+   ============================================================ */
+.prose pre {
+    white-space: pre-wrap;
+    word-break: break-all;
+    overflow-x: auto;
+}
+.prose code {
+    word-break: break-all;
+}
+.prose p,
+.prose li,
+.prose td,
+.prose th {
+    overflow-wrap: anywhere;
+}
+.prose table {
+    table-layout: fixed;
+    width: 100%;
+}
+.prose img {
+    max-width: 100%;
+}

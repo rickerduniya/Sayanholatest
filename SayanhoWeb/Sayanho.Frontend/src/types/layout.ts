@@ -108,97 +108,31 @@ export interface OcrResult {
 // ============================================================================
 
 export type LayoutComponentType =
-    // =========================================================================
-    // LIGHTING
-    // =========================================================================
-    | 'ceiling_light'
-    | 'wall_light'
-    | 'tube_light'
-    | 'led_panel'
-    | 'emergency_light'
-    | 'light_point'           // Generic light point (SLD: Light Point)
-
-    // =========================================================================
-    // POWER OUTLETS / SOCKETS
-    // =========================================================================
-    | 'socket_5a'
-    | 'socket_15a'
-    | 'socket_20a'
-    | 'socket_usb'
-    | 'socket_board_5a'       // SLD: 5A Socket Board
-    | 'socket_board_15a'      // SLD: 15A Socket Board
-
-    // =========================================================================
-    // SWITCHES
-    // =========================================================================
-    | 'switch_1way'
-    | 'switch_2way'
-    | 'switch_dimmer'
-    | 'switch_bell'           // Bell Push
-
-    // =========================================================================
-    // SWITCH BOARDS (Combined Units)
-    // =========================================================================
-    | 'point_switch_board'    // SLD: Point Switch Board
-    | 'switch_board_2way'     // SLD: 2 Switch Board
-    | 'switch_board_3way'     // SLD: 3 Switch Board
-    | 'switch_board_4way'     // SLD: 4 Switch Board
-    | 'switch_board_6way'     // SLD: 6 Switch Board
-    | 'switch_board_8way'     // SLD: 8 Switch Board
-    | 'switch_board_12way'    // SLD: 12 Switch Board
-    | 'switch_board_18way'    // SLD: 18 Switch Board
-    | 'avg_5a_switch_board'   // SLD: Avg. 5A Switch Board
-
-    // =========================================================================
-    // HVAC / FANS
-    // =========================================================================
+    // Distribution Boards
+    | 'spn_db'
+    | 'vtpn_db'
+    | 'htpn_db'
+    | 'lt_cubical_panel'
+    | 'busbar_chamber'
+    // Switchgear
+    | 'main_switch'
+    | 'changeover_switch'
+    // Appliances
     | 'ac_point'
-    | 'exhaust_fan'
+    | 'geyser_point'
+    // Lighting
+    | 'bulb'
+    | 'tube_light'
+    // Fans
     | 'ceiling_fan_point'
-    | 'ceiling_rose'          // SLD: Ceiling Rose
-
-    // =========================================================================
-    // DISTRIBUTION BOARDS
-    // =========================================================================
-    | 'db_box'                // Generic DB
-    | 'spn_db'                // SLD: SPN DB
-    | 'vtpn_db'               // SLD: VTPN
-    | 'htpn_db'               // SLD: HTPN
-    | 'lt_cubical_panel'      // SLD: LT Cubical Panel
-    | 'busbar_chamber'        // SLD: Busbar Chamber
-    | 'mcb_point'
-
-    // =========================================================================
-    // SWITCHGEAR
-    // =========================================================================
-    | 'main_switch'           // SLD: Main Switch
-    | 'changeover_switch'     // SLD: Change Over Switch
-
-    // =========================================================================
-    // METERS
-    // =========================================================================
-    | 'meter_1phase'          // SLD: 1 Phase Meter
-    | 'meter_3phase'          // SLD: 3 Phase Meter
-
-    // =========================================================================
-    // APPLIANCES
-    // =========================================================================
-    | 'geyser_point'          // SLD: Geyser Point
-    | 'computer_point'        // SLD: Computer Point
-    | 'call_bell'             // SLD: Call Bell Point
-
-    // =========================================================================
-    // INFRASTRUCTURE
-    // =========================================================================
-    | 'source'                // SLD: Source (power source)
-    | 'portal'                // SLD: Portal (cross-sheet reference)
-    | 'generator'             // SLD: Generator
-
-    // =========================================================================
-    // SAFETY
-    // =========================================================================
-    | 'smoke_detector'
-    | 'fire_alarm';
+    | 'exhaust_fan'
+    // Switch Boards
+    | 'point_switch_board'
+    | 'avg_5a_switch_board'
+    // Infrastructure
+    | 'source'
+    // Others
+    | 'call_bell';
 
 export interface LayoutComponent {
     id: string;
@@ -321,23 +255,21 @@ export interface LayoutComponentDef {
     type: LayoutComponentType;
     name: string;
     category:
-    | 'lighting'
-    | 'power'
-    | 'switches'
-    | 'switchboards'      // NEW: Combined switch units
-    | 'hvac'
-    | 'distribution'
-    | 'switchgear'        // NEW: Main switches
-    | 'meters'            // NEW: Metering
-    | 'appliances'        // NEW: Geyser, computer, etc.
-    | 'infrastructure'    // NEW: Source, portal, generator
-    | 'safety';
+        | 'distribution'
+        | 'switchgear'
+        | 'appliances'
+        | 'lighting'
+        | 'fans'
+        | 'switchboards'
+        | 'infrastructure'
+        | 'others';
     symbol: string;                    // Unicode symbol for quick display
-    svgIcon: string;                   // SVG filename
-    size: Size;
+    svgIcon: string;                   // SVG filename (relative to /public/)
+    size: Size;                        // Fallback pixel size (used without calibration)
+    realSizeMm: { width: number; height: number }; // Physical size in millimetres (top view)
+    minDisplayPx?: number;             // Min rendered size in px (default 14)
+    maxDisplayPx?: number;             // Max rendered size in px (default 180)
     sldEquivalent?: string;            // Corresponding SLD item name (for sync)
-
-    // NEW: Placement hints
     placementType?: 'wall' | 'ceiling' | 'floor' | 'any';
     defaultWattage?: number;           // For load calculation
     description?: string;              // Tooltip description

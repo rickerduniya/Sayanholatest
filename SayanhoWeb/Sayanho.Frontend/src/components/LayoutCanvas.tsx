@@ -33,7 +33,8 @@ import {
 } from '../utils/LayoutDrawingTools';
 import {
     LAYOUT_COMPONENT_DEFINITIONS,
-    getLayoutComponentDef
+    getLayoutComponentDef,
+    getScaledComponentSize
 } from '../utils/LayoutComponentDefinitions';
 import { layoutImageStore } from '../utils/LayoutImageStore';
 import { useLayoutComponentImages } from '../hooks/useLayoutComponentImages';
@@ -1805,16 +1806,21 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
         });
     };
 
-    // Render electrical components
     const renderComponents = (renderSelected: boolean) => {
         if (!currentPlan) return null;
 
         const targets = currentPlan.components.filter(c => selectedElementIds.includes(c.id) === renderSelected);
+        const ppm = currentPlan.pixelsPerMeter || 50;
 
         return targets.map(comp => {
             const def = LAYOUT_COMPONENT_DEFINITIONS[comp.type];
             const isSelected = selectedElementIds.includes(comp.id);
             const image = componentImages[comp.type];
+
+            // Use calibrated real-world size if available, otherwise fall back to def.size
+            const sz = def?.realSizeMm
+                ? getScaledComponentSize(comp.type, ppm)
+                : (def?.size ?? { width: 24, height: 24 });
 
             return (
                 <Group
@@ -1857,10 +1863,10 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                                 {
                                     isSelected && (
                                         <Rect
-                                            x={-def.size.width / 2 - 4}
-                                            y={-def.size.height / 2 - 4}
-                                            width={def.size.width + 8}
-                                            height={def.size.height + 8}
+                                            x={-sz.width / 2 - 4}
+                                            y={-sz.height / 2 - 4}
+                                            width={sz.width + 8}
+                                            height={sz.height + 8}
                                             stroke="#3b82f6"
                                             strokeWidth={2}
                                             cornerRadius={4}
@@ -1870,18 +1876,18 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                                 }
                                 <KonvaImage
                                     image={image}
-                                    width={def.size.width}
-                                    height={def.size.height}
-                                    offset={{ x: def.size.width / 2, y: def.size.height / 2 }}
+                                    width={sz.width}
+                                    height={sz.height}
+                                    offset={{ x: sz.width / 2, y: sz.height / 2 }}
                                 />
                             </>
                         ) : (
                             /* Fallback: just show symbol text, no background circle */
                             <Text
-                                x={-def.size.width / 2}
+                                x={-sz.width / 2}
                                 y={-8}
-                                width={def.size.width}
-                                text={def.symbol}
+                                width={sz.width}
+                                text={def?.symbol ?? '?'}
                                 fontSize={16}
                                 fontStyle="bold"
                                 fill={isSelected ? '#3b82f6' : (theme === 'dark' ? '#e5e7eb' : '#374151')}

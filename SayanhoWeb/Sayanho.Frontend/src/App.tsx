@@ -25,6 +25,7 @@ import { useTheme } from './context/ThemeContext';
 import { apiTracer } from './utils/apiTracer';
 import { updateItemVisuals } from './utils/SvgUpdater';
 import { applyAutoArrange } from './utils/AutoArrange';
+import { exportProjectToFile, importProjectFromFile } from './utils/LocalProjectService';
 import { Toast } from './components/Toast';
 import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
 import LandingPage from './components/LandingPage';
@@ -492,6 +493,94 @@ function DesignerApp() {
         canvasRef.current?.saveImage();
     };
 
+    // =========================================================================
+    // Local File Save/Load Handlers
+    // =========================================================================
+
+    const handleSaveLocal = async () => {
+        if (sheets.length === 0) {
+            setToastMessage('Nothing to save — add some components first.');
+            setToastType('info');
+            setToastDuration(3000);
+            return;
+        }
+
+        try {
+            const layoutState = useLayoutStore.getState();
+            const projectName =
+                diagrams.find(d => d.id === currentProjectId)?.name ||
+                sheets[0]?.name ||
+                'Untitled Project';
+
+            await exportProjectToFile(
+                sheets,
+                layoutState.floorPlans,
+                layoutState.activeFloorPlanId,
+                layoutState.stagingComponents,
+                Array.from(layoutState.placedStagingComponentIds),
+                projectName
+            );
+
+            setToastMessage(`Project "${projectName}" saved to file!`);
+            setToastType('success');
+            setToastDuration(3000);
+        } catch (error: any) {
+            // User cancelled the save dialog — not a real error
+            if (error?.message === 'CANCELLED') return;
+            console.error('Local save failed:', error);
+            setToastMessage('Failed to save project to file.');
+            setToastType('error');
+            setToastDuration(3000);
+        }
+    };
+
+    const handleLoadLocal = async () => {
+        try {
+            const result = await importProjectFromFile();
+
+            if (!result.success) {
+                // User cancelled — don't show an error
+                if (result.error === 'Cancelled') return;
+                setToastMessage(result.error || 'Failed to load project file.');
+                setToastType('error');
+                setToastDuration(4000);
+                return;
+            }
+
+            // 1. Set SLD sheets
+            setSheets(result.sheets);
+
+            // 2. Restore layout state if present
+            const layoutData = (result as any).layoutData;
+            if (layoutData) {
+                useLayoutStore.getState().loadProject(
+                    layoutData.floorPlans || [],
+                    layoutData.activeFloorPlanId || null,
+                    layoutData.stagingComponents || [],
+                    layoutData.placedStagingComponentIds || []
+                );
+            }
+
+            // 3. Clear cloud project association (local file is not tied to cloud)
+            setCurrentProjectId(null);
+
+            // 4. Trigger network analysis to regenerate computed values
+            setTimeout(() => {
+                console.log('[handleLoadLocal] Regenerating network analysis...');
+                calculateNetwork();
+            }, 500);
+
+            setToastMessage(`Project "${result.projectName}" loaded from file!`);
+            setToastType('success');
+            setToastDuration(3000);
+        } catch (error) {
+            console.error('Local load failed:', error);
+            setToastMessage('Failed to load project file.');
+            setToastType('error');
+            setToastDuration(3000);
+        }
+    };
+
     return (
         <div className="flex flex-col h-screen overflow-hidden select-none bg-background text-foreground relative">
             <MobileDetector />
@@ -531,6 +620,8 @@ function DesignerApp() {
 
                             onOpenVoltageDrop={() => setShowVoltageDropDialog(true)}
                             onOpenNetworkMonitor={() => setShowNetworkMonitor(true)}
+                            onSaveLocal={handleSaveLocal}
+                            onLoadLocal={handleLoadLocal}
                         />
                     </div>
                 )}
