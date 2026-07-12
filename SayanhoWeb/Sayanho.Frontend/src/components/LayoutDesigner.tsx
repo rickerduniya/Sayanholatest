@@ -107,11 +107,6 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
         setSyncMessage('Generating SLD from layout...');
 
         try {
-            // Generate SLD items from layout using sync engine
-            const result = await syncEngine.syncLayoutToSld(currentPlan, (msg) => {
-                setSyncMessage(msg);
-            });
-
             // Build set of current Layout component IDs
             const currentLayoutComponentIds = new Set(currentPlan.components.map(c => c.id));
 
@@ -139,6 +134,15 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                 ...allPlacedSldIds,
                 ...cleanedStagingItems.map(i => i.uniqueID)
             ]);
+
+            // Generate only the components that are not already staged or
+            // placed. Rebuilding every existing item made each incremental
+            // Layout edit slower as the floor plan grew.
+            const result = await syncEngine.syncLayoutToSld(currentPlan, (msg) => {
+                setSyncMessage(msg);
+            }, {
+                existingSldItemIds: existingIds
+            });
 
             // Also track existing Layout component links to avoid duplicates
             const existingLayoutLinks = new Set(
@@ -187,6 +191,7 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
     // AUTO-SYNC: Trigger Layout→SLD sync ONLY when component count actually changes
     const prevComponentCountRef = React.useRef<number>(0);
     const isFirstMountRef = React.useRef(true);
+    const autoSyncTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
     React.useEffect(() => {
         const currentCount = currentPlan?.components?.length ?? 0;
@@ -199,12 +204,27 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
             return;
         }
 
-        // Only sync if count actually changed (not on every render)
+        // Coalesce rapid additions into one sync. Adding a large set of
+        // components used to start a complete sync after every drop.
         if (currentCount !== prevCount && currentCount > 0) {
-            console.log(`[AutoSync] Component count changed: ${prevCount} → ${currentCount}`);
             prevComponentCountRef.current = currentCount;
-            handleSyncToSld();
+
+            if (autoSyncTimerRef.current) {
+                clearTimeout(autoSyncTimerRef.current);
+            }
+
+            autoSyncTimerRef.current = setTimeout(() => {
+                autoSyncTimerRef.current = null;
+                handleSyncToSld();
+            }, 300);
         }
+
+        return () => {
+            if (autoSyncTimerRef.current) {
+                clearTimeout(autoSyncTimerRef.current);
+                autoSyncTimerRef.current = null;
+            }
+        };
     }, [currentPlan?.components?.length]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Sync SLD to Layout (Reverse Sync) - Populates Layout Staging

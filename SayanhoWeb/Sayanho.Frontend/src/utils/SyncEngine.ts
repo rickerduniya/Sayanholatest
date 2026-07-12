@@ -23,12 +23,60 @@ import { updateItemVisuals } from './SvgUpdater';
 import { calculateGeometry } from './GeometryCalculator';
 import type { ItemData } from '../types';
 
+type ItemPropertiesResult = Awaited<ReturnType<typeof api.getItemProperties>>;
+
+const MAX_CONCURRENT_ITEM_GENERATIONS = 8;
+
 let cachedItemCatalog: ItemData[] | null = null;
+let itemCatalogRequest: Promise<ItemData[]> | null = null;
+const itemPropertiesRequests = new Map<string, Promise<ItemPropertiesResult>>();
+const iconContentRequests = new Map<string, Promise<string | undefined>>();
 
 async function getItemCatalog(): Promise<ItemData[]> {
     if (cachedItemCatalog) return cachedItemCatalog;
-    cachedItemCatalog = await api.getItems();
-    return cachedItemCatalog;
+
+    if (!itemCatalogRequest) {
+        itemCatalogRequest = api.getItems()
+            .then(items => {
+                cachedItemCatalog = items;
+                return items;
+            })
+            .catch(error => {
+                itemCatalogRequest = null;
+                throw error;
+            });
+    }
+
+    return itemCatalogRequest;
+}
+
+function getCachedItemProperties(sldName: string): Promise<ItemPropertiesResult> {
+    const existingRequest = itemPropertiesRequests.get(sldName);
+    if (existingRequest) return existingRequest;
+
+    const request = api.getItemProperties(sldName, 1).catch(error => {
+        itemPropertiesRequests.delete(sldName);
+        throw error;
+    });
+
+    itemPropertiesRequests.set(sldName, request);
+    return request;
+}
+
+function getCachedIconContent(iconName: string): Promise<string | undefined> {
+    const iconLeaf = iconName.split('/').pop() || iconName;
+    const existingRequest = iconContentRequests.get(iconLeaf);
+    if (existingRequest) return existingRequest;
+
+    const request = fetch(encodeURI(api.getIconUrl(iconLeaf)))
+        .then(response => response.ok ? response.text() : undefined)
+        .catch(error => {
+            iconContentRequests.delete(iconLeaf);
+            throw error;
+        });
+
+    iconContentRequests.set(iconLeaf, request);
+    return request;
 }
 
 async function resolveIconPathForSldName(sldName: string): Promise<string | undefined> {
@@ -70,10 +118,44 @@ export interface SldGenerationResult {
     warnings: string[];
 }
 
+export interface SldGenerationOptions {
+    // Items already staged or placed in SLD do not need to be recreated.
+    existingSldItemIds?: ReadonlySet<string>;
+}
+
 export interface UpstreamGroup {
     dbComponent: LayoutComponent;
     connectedLoads: LayoutComponent[];
     room?: Room;
+}
+
+interface SldGenerationCandidate {
+    layoutComponent: LayoutComponent;
+    sldName: string;
+    position: { x: number; y: number };
+    hierarchyLevel: number;
+}
+
+async function mapWithConcurrency<T, R>(
+    values: T[],
+    mapper: (value: T) => Promise<R>,
+    concurrency = MAX_CONCURRENT_ITEM_GENERATIONS
+): Promise<R[]> {
+    const results = new Array<R>(values.length);
+    let nextIndex = 0;
+
+    const worker = async () => {
+        while (nextIndex < values.length) {
+            const index = nextIndex++;
+            results[index] = await mapper(values[index]);
+        }
+    };
+
+    await Promise.all(
+        Array.from({ length: Math.min(concurrency, values.length) }, () => worker())
+    );
+
+    return results;
 }
 
 // =============================================================================
@@ -241,7 +323,8 @@ function findClosestComponent(target: LayoutComponent, candidates: LayoutCompone
  */
 export async function generateSldFromLayout(
     floorPlan: FloorPlan,
-    onProgress?: (msg: string) => void
+    onProgress?: (msg: string) => void,
+    options: SldGenerationOptions = {}
 ): Promise<SldGenerationResult> {
     const items: CanvasItem[] = [];
     const connectors: Connector[] = [];
@@ -252,62 +335,99 @@ export async function generateSldFromLayout(
     const hierarchyGroups = groupByHierarchy(floorPlan.components);
     const levels = Object.keys(hierarchyGroups).map(Number).sort((a, b) => a - b);
 
-    // Track created SLD items for connection
-    const sldItemMap = new Map<string, CanvasItem>();
-
     // Layout positioning
     let currentY = 100;
     const xCenter = 400;
     const levelSpacing = 150;
     const itemSpacing = 120;
 
-    const totalComponents = floorPlan.components.length;
-    let processed = 0;
+    const candidates: SldGenerationCandidate[] = [];
 
-    // Process each hierarchy level from upstream to downstream
+    // Build the work list synchronously so item setup can run concurrently.
     for (const level of levels) {
         const levelComponents = hierarchyGroups[level];
         let currentX = xCenter - ((levelComponents.length - 1) * itemSpacing) / 2;
 
         for (const layoutComp of levelComponents) {
-            processed++;
-            if (onProgress) {
-                const def = LAYOUT_COMPONENT_DEFINITIONS[layoutComp.type];
-                onProgress(`Syncing ${processed}/${totalComponents}: ${def?.name || layoutComp.type}`);
-            }
-
             const sldName = LAYOUT_TO_SLD_MAP[layoutComp.type];
             if (!sldName) {
                 // No SLD equivalent - skip but warn
                 warnings.push(`No SLD equivalent for ${layoutComp.type}`);
+                currentX += itemSpacing;
                 continue;
             }
 
-            // Create SLD item (ASYNC)
-            try {
-                const sldItem = await createProperSldItem(sldName, layoutComp, { x: currentX, y: currentY });
-                items.push(sldItem);
-                sldItemMap.set(layoutComp.id, sldItem);
-                syncLinks.set(layoutComp.id, sldItem.uniqueID);
-
-                // Create connector to upstream component
-                if (level > 0) {
-                    const upstreamDB = findUpstreamDB(layoutComp, floorPlan);
-                    if (upstreamDB && sldItemMap.has(upstreamDB.id)) {
-                        const sourceItem = sldItemMap.get(upstreamDB.id)!;
-                        const connector = createConnector(sourceItem, sldItem);
-                        connectors.push(connector);
-                    }
-                }
-            } catch (err) {
-                console.error(`Failed to create SLD item for ${layoutComp.type}`, err);
-                warnings.push(`Failed to create ${sldName}`);
+            const sldItemId = layoutComp.sldItemId ?? `sld_${layoutComp.id}`;
+            if (options.existingSldItemIds?.has(sldItemId)) {
+                // Preserve the link without rebuilding an item that is already
+                // staged or placed in SLD.
+                syncLinks.set(layoutComp.id, sldItemId);
+                currentX += itemSpacing;
+                continue;
             }
+
+            candidates.push({
+                layoutComponent: layoutComp,
+                sldName,
+                position: { x: currentX, y: currentY },
+                hierarchyLevel: level
+            });
 
             currentX += itemSpacing;
         }
 
         currentY += levelSpacing;
+    }
+
+    if (candidates.length === 0) {
+        onProgress?.('SLD is already up to date');
+        return { items, connectors, syncLinks, warnings };
+    }
+
+    // Fetch item defaults and SVGs in a bounded parallel pool. This avoids
+    // one network round-trip per component while keeping the browser and API
+    // responsive for very large layouts.
+    let completed = 0;
+    const generated = await mapWithConcurrency(candidates, async candidate => {
+        try {
+            const item = await createProperSldItem(
+                candidate.sldName,
+                candidate.layoutComponent,
+                candidate.position
+            );
+
+            completed++;
+            if (onProgress && (completed === candidates.length || completed % MAX_CONCURRENT_ITEM_GENERATIONS === 0)) {
+                onProgress(`Syncing ${completed}/${candidates.length} items`);
+            }
+
+            return { candidate, item };
+        } catch (error) {
+            console.error(`Failed to create SLD item for ${candidate.layoutComponent.type}`, error);
+            warnings.push(`Failed to create ${candidate.sldName}`);
+            return { candidate, item: undefined };
+        }
+    });
+
+    // Keep result ordering deterministic and build a complete lookup before
+    // calculating connectors. The lookup is also used for stable sync links.
+    const sldItemMap = new Map<string, CanvasItem>();
+    for (const { candidate, item } of generated) {
+        if (!item) continue;
+
+        items.push(item);
+        sldItemMap.set(candidate.layoutComponent.id, item);
+        syncLinks.set(candidate.layoutComponent.id, item.uniqueID);
+    }
+
+    for (const { candidate, item } of generated) {
+        if (!item || candidate.hierarchyLevel <= 0) continue;
+
+        const upstreamDB = findUpstreamDB(candidate.layoutComponent, floorPlan);
+        if (upstreamDB && sldItemMap.has(upstreamDB.id)) {
+            const sourceItem = sldItemMap.get(upstreamDB.id)!;
+            connectors.push(createConnector(sourceItem, item));
+        }
     }
 
     // NOTE: Aggregation disabled to maintain 1:1 mapping between Layout and SLD items
@@ -355,7 +475,7 @@ async function createProperSldItem(
 
     // 2. Fetch Properties & Defaults from API
     try {
-        const props = await api.getItemProperties(sldName, 1);
+        const props = await getCachedItemProperties(sldName);
         if (props?.properties && props.properties.length > 0) {
             newItem.properties = [props.properties[0]];
         }
@@ -383,12 +503,9 @@ async function createProperSldItem(
     const resolvedIconPath = await resolveIconPathForSldName(sldName);
     const iconName = resolvedIconPath || `${sldName}.svg`;
     try {
-        const iconLeaf = iconName.split('/').pop() || iconName;
-        const url = api.getIconUrl(iconLeaf);
-        const encodedUrl = encodeURI(url);
-        const response = await fetch(encodedUrl);
-        if (response.ok) {
-            newItem.svgContent = await response.text();
+        const svgContent = await getCachedIconContent(iconName);
+        if (svgContent) {
+            newItem.svgContent = svgContent;
             newItem.iconPath = iconName;
         }
     } catch {
@@ -525,9 +642,10 @@ export class SyncEngine {
      */
     async syncLayoutToSld(
         floorPlan: FloorPlan,
-        onProgress?: (msg: string) => void
+        onProgress?: (msg: string) => void,
+        options?: SldGenerationOptions
     ): Promise<SldGenerationResult> {
-        const result = await generateSldFromLayout(floorPlan, onProgress);
+        const result = await generateSldFromLayout(floorPlan, onProgress, options);
 
         // Update state
         this.state.layoutToSld = result.syncLinks;
