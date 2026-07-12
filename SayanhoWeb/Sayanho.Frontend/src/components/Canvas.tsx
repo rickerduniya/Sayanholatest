@@ -25,6 +25,7 @@ import { calculateSnapPosition } from '../utils/SnapUtils';
 import { sortOptionStringsAsc } from '../utils/sortUtils';
 import { fetchProperties } from '../utils/api';
 import { createConnectorWithDefaults } from '../utils/ConnectorFactory';
+import { LayoutConnectionPreview } from './LayoutConnectionPreview';
 
 const getPhaseColor = (connector: Connector, theme: string): string => {
     const useColor = ApplicationSettings.getSaveImageInColor();
@@ -166,6 +167,10 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
         targetId: string;
         targetKey: string;
     } | null>(null);
+    const [layoutConnectionPreview, setLayoutConnectionPreview] = useState<{
+        sourceId: string;
+        targetId?: string;
+    } | null>(null);
     const [hideConnectionPoints, setHideConnectionPoints] = useState(false); // For image export
     const [isExporting, setIsExporting] = useState(false);
 
@@ -184,6 +189,13 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
     const [pendingPortalPos, setPendingPortalPos] = useState<{ x: number, y: number } | null>(null);
     const [showSelectSheet, setShowSelectSheet] = useState(false);
     const [pendingPair, setPendingPair] = useState<{ netId: string, direction: 'in' | 'out' } | null>(null);
+
+    const previewSourceItem = layoutConnectionPreview
+        ? currentSheet?.canvasItems.find(item => item.uniqueID === layoutConnectionPreview.sourceId)
+        : undefined;
+    const previewTargetItem = layoutConnectionPreview?.targetId
+        ? currentSheet?.canvasItems.find(item => item.uniqueID === layoutConnectionPreview.targetId)
+        : undefined;
 
     // Ref to track if we are actually dragging a connection line
     const isDraggingConnectionRef = useRef(false);
@@ -891,12 +903,18 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
     // --- Connection Logic ---
 
     const createConnection = (sourceId: string, sourceKey: string, targetId: string, targetKey: string) => {
-        if (sourceId === targetId) return; // Don't connect to self
+        if (sourceId === targetId) {
+            setLayoutConnectionPreview(null);
+            return; // Don't connect to self
+        }
 
         let sourceItem = currentSheet?.canvasItems.find(i => i.uniqueID === sourceId);
         let targetItem = currentSheet?.canvasItems.find(i => i.uniqueID === targetId);
 
-        if (!sourceItem || !targetItem) return;
+        if (!sourceItem || !targetItem) {
+            setLayoutConnectionPreview(null);
+            return;
+        }
 
         const isPortal = (it: any) => it?.name === 'Portal';
         const getDir = (it: any) => {
@@ -933,8 +951,13 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
             targetKey = tmpKey;
         } else if (!(sType === 'out' && tType === 'in')) {
             alert('Invalid connection. Source must be an OUT point and target must be an IN point.');
+            setLayoutConnectionPreview(null);
             return;
         }
+
+        // Preserve the normalized source/target order so the miniature Layout
+        // view always shows the same direction as the SLD connection.
+        setLayoutConnectionPreview({ sourceId, targetId });
 
         // Check if this is a special connection (Point Switch Board or Avg. 5A Switch Board)
         const isSpecialConnection =
@@ -1005,6 +1028,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
     const handleMaterialCancel = () => {
         setShowMaterialDialog(false);
         setPendingConnection(null);
+        setLayoutConnectionPreview(null);
     };
 
     const handleConnectionPointMouseDown = (itemId: string, pointKey: string, e: any) => {
@@ -1018,6 +1042,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
 
         setDragStart({ itemId, pointKey, startPos: { x: startX, y: startY } });
         setTempLine([startX, startY, startX, startY]);
+        setLayoutConnectionPreview({ sourceId: itemId });
         isDraggingConnectionRef.current = false;
     };
 
@@ -1045,12 +1070,31 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
         if (!clickStart) {
             // Start click-click connection
             setClickStart({ itemId, pointKey });
+            setLayoutConnectionPreview({ sourceId: itemId });
             log('[UI][CONNECT] Click start', { itemId, pointKey });
         } else {
             // Complete click-click connection
             createConnection(clickStart.itemId, clickStart.pointKey, itemId, pointKey);
             setClickStart(null);
         }
+    };
+
+    const handleConnectionPointMouseEnter = (itemId: string) => {
+        const sourceId = dragStart?.itemId ?? clickStart?.itemId;
+        if (!sourceId || sourceId === itemId) return;
+
+        setLayoutConnectionPreview({ sourceId, targetId: itemId });
+    };
+
+    const handleConnectionPointMouseLeave = (itemId: string) => {
+        const sourceId = dragStart?.itemId ?? clickStart?.itemId;
+        if (!sourceId) return;
+
+        setLayoutConnectionPreview(previous =>
+            previous?.sourceId === sourceId && previous.targetId === itemId
+                ? { sourceId }
+                : previous
+        );
     };
 
     const handleGlobalMouseMove = (e: any) => {
@@ -1209,6 +1253,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                 setDragStart(null);
                 setTempLine(null);
                 setSelectionBox(null);
+                setLayoutConnectionPreview(null);
                 clearSelection();
             }
             // Copy/Paste shortcuts
@@ -1362,6 +1407,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
 
                         // If clicking on empty space, cancel click-start
                         if (clickStart) setClickStart(null);
+                        setLayoutConnectionPreview(null);
                         // Hide menu if visible
                         if (menu.visible) setMenu({ ...menu, visible: false });
 
@@ -1709,6 +1755,8 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                             onConnectionPointClick={(key, e) => handleConnectionPointClick(item.uniqueID, key, e)}
                             onConnectionPointMouseDown={(key, e) => handleConnectionPointMouseDown(item.uniqueID, key, e)}
                             onConnectionPointMouseUp={(key, e) => handleConnectionPointMouseUp(item.uniqueID, key, e)}
+                            onConnectionPointMouseEnter={() => handleConnectionPointMouseEnter(item.uniqueID)}
+                            onConnectionPointMouseLeave={() => handleConnectionPointMouseLeave(item.uniqueID)}
                             onResizeEnd={(w, h) => {
                                 updateItemSize(item.uniqueID, Math.round(w), Math.round(h));
                             }}
@@ -1792,6 +1840,13 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
 
                 </Layer>
             </Stage>
+
+            {previewSourceItem && (
+                <LayoutConnectionPreview
+                    sourceItem={previewSourceItem}
+                    targetItem={previewTargetItem}
+                />
+            )}
 
             {/* Connection Mode Indicator (Click-Click) */}
             {clickStart && (

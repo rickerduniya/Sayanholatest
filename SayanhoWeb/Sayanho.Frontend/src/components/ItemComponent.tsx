@@ -15,6 +15,8 @@ interface ItemComponentProps {
     onConnectionPointClick?: (key: string, e: any) => void;
     onConnectionPointMouseDown?: (key: string, e: any) => void;
     onConnectionPointMouseUp?: (key: string, e: any) => void;
+    onConnectionPointMouseEnter?: (key: string, e: any) => void;
+    onConnectionPointMouseLeave?: (key: string, e: any) => void;
     showConnectionPoints?: boolean;
     onDragStart?: (e?: any) => void;
     onResizeEnd?: (w: number, h: number) => void;
@@ -34,6 +36,8 @@ export const ItemComponent: React.FC<ItemComponentProps> = ({
     onConnectionPointClick,
     onConnectionPointMouseDown,
     onConnectionPointMouseUp,
+    onConnectionPointMouseEnter,
+    onConnectionPointMouseLeave,
     showConnectionPoints,
     onDragStart,
     onResizeEnd,
@@ -294,10 +298,12 @@ export const ItemComponent: React.FC<ItemComponentProps> = ({
                         onMouseEnter={(e) => {
                             const stage = e.target.getStage();
                             if (stage) stage.container().style.cursor = 'crosshair';
+                            onConnectionPointMouseEnter?.(key, e);
                         }}
                         onMouseLeave={(e) => {
                             const stage = e.target.getStage();
                             if (stage) stage.container().style.cursor = 'default';
+                            onConnectionPointMouseLeave?.(key, e);
                         }}
                     >
                         {/* Hit Area (Invisible but larger for touch) */}
