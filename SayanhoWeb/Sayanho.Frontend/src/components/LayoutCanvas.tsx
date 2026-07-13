@@ -42,6 +42,7 @@ import { ApplicationSettings } from '../utils/ApplicationSettings';
 
 export interface LayoutCanvasRef {
     saveImage: () => void;
+    captureSnapshot: () => Promise<string>;
     zoomIn: () => void;
     zoomOut: () => void;
     resetZoom: () => void;
@@ -444,6 +445,35 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                 alert('Failed to export image.');
             }
         },
+        captureSnapshot: async () => {
+            if (!stageRef.current || !currentPlan) return '';
+
+            const stage = stageRef.current.getStage();
+            const oldScaleX = stage.scaleX();
+            const oldScaleY = stage.scaleY();
+            const oldPosition = stage.position();
+
+            try {
+                stage.scale({ x: 1, y: 1 });
+                stage.position({ x: 0, y: 0 });
+                stage.batchDraw();
+                return stage.toDataURL({
+                    x: 0,
+                    y: 0,
+                    width: currentPlan.width,
+                    height: currentPlan.height,
+                    pixelRatio: 2,
+                    mimeType: 'image/png'
+                });
+            } catch (error) {
+                console.error('[LayoutCanvas] captureSnapshot failed:', error);
+                return '';
+            } finally {
+                stage.scale({ x: oldScaleX, y: oldScaleY });
+                stage.position(oldPosition);
+                stage.batchDraw();
+            }
+        },
         zoomIn: () => {
             const newScale = Math.min(scale * 1.2, 3);
             setScale(newScale);
@@ -726,12 +756,30 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                         setConnectionSource(clickedComponent.id);
                     } else if (connectionSource && clickedComponent.id !== connectionSource) {
                         // Second click on different component - complete connection
-                        addConnection({
-                            sourceId: connectionSource,
-                            targetId: clickedComponent.id,
-                            path: currentPath.slice(1), // Intermediate points
-                            type: 'power'
-                        });
+                        const sourceComponent = currentPlan.components.find(component => component.id === connectionSource);
+                        if (!sourceComponent) {
+                            setIsDrawing(false);
+                            setCurrentPath([]);
+                            setConnectionSource(null);
+                            return;
+                        }
+                        const connectionAlreadyExists = currentPlan.connections.some(connection =>
+                            (connection.sourceId === connectionSource && connection.targetId === clickedComponent.id) ||
+                            (connection.sourceId === clickedComponent.id && connection.targetId === connectionSource)
+                        );
+                        const connectsSwitchBoard = sourceComponent?.type === 'point_switch_board' ||
+                            sourceComponent?.type === 'avg_5a_switch_board' ||
+                            clickedComponent.type === 'point_switch_board' ||
+                            clickedComponent.type === 'avg_5a_switch_board';
+
+                        if (!connectionAlreadyExists) {
+                            addConnection({
+                                sourceId: connectionSource,
+                                targetId: clickedComponent.id,
+                                path: [sourceComponent.position, ...currentPath.slice(1), clickedComponent.position],
+                                type: connectsSwitchBoard ? 'control' : 'power'
+                            });
+                        }
                         setIsDrawing(false);
                         setCurrentPath([]);
                         setConnectionSource(null);

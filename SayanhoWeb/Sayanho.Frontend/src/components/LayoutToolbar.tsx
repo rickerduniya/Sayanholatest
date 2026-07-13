@@ -27,7 +27,9 @@ import {
     X,
     RotateCcw,
     Wand2,
-    Type
+    Type,
+    Bot,
+    GitBranch
 } from 'lucide-react';
 import { useLayoutStore } from '../store/useLayoutStore';
 import { useTheme } from '../context/ThemeContext';
@@ -42,6 +44,8 @@ interface LayoutToolbarProps {
     onScaleCalibrate?: () => void;
     showMagicWires: boolean;
     onToggleMagicWires: () => void;
+    showChat: boolean;
+    onToggleChat: () => void;
     isAddTextMode?: boolean;
     onAddText?: () => void;
     // Layer toggles
@@ -131,6 +135,8 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
     onScaleCalibrate,
     showMagicWires,
     onToggleMagicWires,
+    showChat,
+    onToggleChat,
     isAddTextMode,
     onAddText,
     showWalls = true,
@@ -357,6 +363,18 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                         active={showMagicWires}
                         onClick={onToggleMagicWires}
                         variant={showMagicWires ? 'success' : 'default'}
+                    />
+                    <ToolButton
+                        icon={<GitBranch size={16} />}
+                        label="Connect Components"
+                        active={activeTool === 'connection'}
+                        onClick={() => setActiveTool(activeTool === 'connection' ? 'select' : 'connection')}
+                    />
+                    <ToolButton
+                        icon={<Bot size={16} />}
+                        label={showChat ? 'Close AI Assistant' : 'Open AI Assistant'}
+                        active={showChat}
+                        onClick={() => onToggleChat()}
                     />
                     {onAddText && (
                         <ToolButton

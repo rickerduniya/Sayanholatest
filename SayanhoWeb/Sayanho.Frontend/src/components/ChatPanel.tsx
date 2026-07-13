@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useStore } from '../store/useStore';
+import { useLayoutStore } from '../store/useLayoutStore';
 import { useTheme } from '../context/ThemeContext';
 import { chatService, ChatMessage, DiagramCallbacks } from '../services/ChatService';
 import { api } from '../services/api';
@@ -44,6 +45,8 @@ export const ChatPanel = () => {
         selectedConnectorIndices,
         canvasSnapshotCallback
     } = useStore();
+    const activeView = useLayoutStore(state => state.activeView);
+    const isLayoutMode = activeView === 'layout';
     const { colors } = useTheme();
     const [messages, setMessages] = useState<ChatMessage[]>([]);
     const [input, setInput] = useState('');
@@ -611,7 +614,7 @@ export const ChatPanel = () => {
 
     return (
         <div
-            className="fixed right-0 top-12 bottom-0 w-[450px] shadow-2xl flex flex-col z-40 border-l transition-all duration-300 ease-in-out"
+            className="fixed right-3 top-3 bottom-3 w-[400px] max-w-[calc(100vw-1.5rem)] rounded-xl shadow-2xl flex flex-col z-40 border transition-all duration-300 ease-in-out"
             style={{ backgroundColor: colors.panelBackground, borderColor: colors.border }}
         >
             {/* Toast Notification */}
@@ -631,7 +634,7 @@ export const ChatPanel = () => {
             <div className="p-4 border-b flex justify-between items-center bg-gradient-to-r from-blue-600 to-blue-700 text-white">
                 <div className="flex items-center gap-2">
                     <Bot size={20} />
-                    <h2 className="font-semibold">AI Diagram Assistant</h2>
+                    <h2 className="font-semibold">AI {isLayoutMode ? 'Layout' : 'Diagram'} Assistant</h2>
                 </div>
                 <div className="flex items-center gap-1">
                     <button
@@ -659,15 +662,15 @@ export const ChatPanel = () => {
                             <Bot size={40} className="text-blue-600 dark:text-blue-400" />
                         </div>
                         <div>
-                            <p className="font-medium text-lg">AI Diagram Assistant</p>
-                            <p className="text-sm mt-1">Ask about your diagram, analyze loads, or add components.</p>
+                            <p className="font-medium text-lg">AI {isLayoutMode ? 'Layout' : 'Diagram'} Assistant</p>
+                            <p className="text-sm mt-1">{isLayoutMode ? 'Ask about floor-plan wiring, point switch boards, or load placement.' : 'Ask about your diagram, analyze loads, or add components.'}</p>
                         </div>
                         <div className="grid grid-cols-1 gap-2 text-xs w-full max-w-xs">
-                            <button onClick={() => setInput("What's the total load on my diagram?")} className="p-2 rounded border hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left" style={{ borderColor: colors.border }}>
-                                "What's the total load on my diagram?"
+                            <button onClick={() => setInput(isLayoutMode ? "How should I connect these loads to point switch boards?" : "What's the total load on my diagram?")} className="p-2 rounded border hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left" style={{ borderColor: colors.border }}>
+                                {isLayoutMode ? 'How should I connect these loads to point switch boards?' : "What's the total load on my diagram?"}
                             </button>
-                            <button onClick={() => setInput("Is my diagram phase balanced?")} className="p-2 rounded border hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left" style={{ borderColor: colors.border }}>
-                                "Is my diagram phase balanced?"
+                            <button onClick={() => setInput(isLayoutMode ? "What is the best layout for lighting and fan points?" : "Is my diagram phase balanced?")} className="p-2 rounded border hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left" style={{ borderColor: colors.border }}>
+                                {isLayoutMode ? 'What is the best layout for lighting and fan points?' : 'Is my diagram phase balanced?'}
                             </button>
                             <button onClick={() => setInput("Add a ceiling fan to my diagram")} className="p-2 rounded border hover:bg-black/5 dark:hover:bg-white/5 transition-colors text-left" style={{ borderColor: colors.border }}>
                                 "Add a ceiling fan to my diagram"

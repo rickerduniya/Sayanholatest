@@ -589,7 +589,12 @@ function DesignerApp() {
 
             {/* Full Screen Canvas - Conditional based on view mode */}
             {activeView === 'layout' ? (
-                <LayoutDesigner ref={layoutRef} showLeftPanel={showLeftPanel} />
+                <LayoutDesigner
+                    ref={layoutRef}
+                    showLeftPanel={showLeftPanel}
+                    showChat={isChatOpen}
+                    onToggleChat={toggleChat}
+                />
             ) : (
                 <div className="absolute inset-0 z-0">
                     <Canvas
@@ -671,14 +676,14 @@ function DesignerApp() {
 
             {/* Left Sidebar (SLD mode only) */}
             {activeView === 'sld' && showLeftPanel && (
-                <div className="absolute left-4 top-12 bottom-4 w-56 z-40 premium-glass rounded-xl overflow-hidden flex flex-col transition-all duration-300 animate-slide-in-left">
+                <div className="absolute left-4 top-12 bottom-4 w-48 z-40 premium-glass rounded-xl overflow-hidden flex flex-col transition-all duration-300 animate-slide-in-left">
                     <Sidebar />
                 </div>
             )}
 
             {/* Right Properties Panel (SLD mode only) */}
             {activeView === 'sld' && (
-                <div className={`absolute right-4 top-12 bottom-4 w-64 z-40 pointer-events-none transition-opacity duration-300 ${isPropertiesPanelOpen ? 'opacity-100' : 'opacity-0'}`}>
+                <div className={`absolute right-4 top-12 bottom-4 w-56 z-40 pointer-events-none transition-opacity duration-300 ${isPropertiesPanelOpen ? 'opacity-100' : 'opacity-0'}`}>
                     {isPropertiesPanelOpen && (
                         <div className="pointer-events-auto h-full premium-glass rounded-xl overflow-hidden flex flex-col animate-slide-in-right">
                             <PropertiesPanel />
@@ -689,7 +694,7 @@ function DesignerApp() {
 
             {/* Bottom Tabs (SLD mode only) */}
             {activeView === 'sld' && (
-                <div className={`absolute bottom-2 z-30 premium-glass rounded-full px-4 py-0.5 animate-slide-in-bottom transition-all duration-300 ${showLeftPanel ? 'left-64' : 'left-4'} right-80`}>
+                <div className={`absolute bottom-2 z-30 premium-glass rounded-full px-4 py-0.5 animate-slide-in-bottom transition-all duration-300 ${showLeftPanel ? 'left-56' : 'left-4'} right-60`}>
                     <CanvasTabs />
                 </div>
             )}

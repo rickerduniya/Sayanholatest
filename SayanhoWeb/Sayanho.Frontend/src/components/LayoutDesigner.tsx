@@ -15,13 +15,15 @@ import { syncEngine, calculateFloorPlanLoad } from '../utils/SyncEngine';
 
 interface LayoutDesignerProps {
     showLeftPanel: boolean;
+    showChat: boolean;
+    onToggleChat: () => void;
 }
 
 export interface LayoutDesignerRef {
     saveImage: () => void;
 }
 
-export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>(({ showLeftPanel }, ref) => {
+export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>(({ showLeftPanel, showChat, onToggleChat }, ref) => {
     const { colors, theme } = useTheme();
     const canvasRef = useRef<LayoutCanvasRef>(null);
 
@@ -36,12 +38,13 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
         undo,
         redo,
         setActiveTool,
+        drawingState,
         visibility: { showWalls, showDoors, showWindows, showRooms },
         setLayoutVisibility
     } = useLayoutStore();
 
     // SLD store for sync
-    const { addItem, getCurrentSheet, stagingItems, setStagingItems, sheets, activeSheetId } = useStore();
+    const { addItem, getCurrentSheet, stagingItems, setStagingItems, sheets, activeSheetId, registerCanvasSnapshotCallback } = useStore();
 
     const [scale, setScale] = useState(0.5);
     const [showUploadDialog, setShowUploadDialog] = useState(false);
@@ -93,6 +96,11 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
     useImperativeHandle(ref, () => ({
         saveImage: () => canvasRef.current?.saveImage()
     }));
+
+    React.useEffect(() => {
+        registerCanvasSnapshotCallback(async () => canvasRef.current?.captureSnapshot() || '');
+        return () => registerCanvasSnapshotCallback(null);
+    }, [registerCanvasSnapshotCallback]);
 
     // Sync Layout to SLD - using upstream-to-downstream algorithm
     const handleSyncToSld = useCallback(async () => {
@@ -370,6 +378,8 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                     }}
                     showMagicWires={showMagicWires}
                     onToggleMagicWires={() => setShowMagicWires(!showMagicWires)}
+                    showChat={showChat}
+                    onToggleChat={onToggleChat}
                     showWalls={showWalls}
                     onToggleWalls={() => setLayoutVisibility('showWalls', !showWalls)}
                     showDoors={showDoors}
@@ -386,10 +396,16 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
             {/* Left Sidebar - Floating */}
             {showLeftPanel && (
                 <div
-                    className="absolute left-4 top-14 bottom-16 w-60 z-40 premium-glass rounded-xl overflow-hidden flex flex-col transition-all duration-300 animate-slide-in-left shadow-xl"
+                    className="absolute left-4 top-14 bottom-16 w-48 z-40 premium-glass rounded-xl overflow-hidden flex flex-col transition-all duration-300 animate-slide-in-left shadow-xl"
                     style={{ backgroundColor: colors.panelBackground }}
                 >
                     <LayoutSidebar />
+                </div>
+            )}
+
+            {drawingState.activeTool === 'connection' && (
+                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 rounded-full px-4 py-2 text-xs font-medium shadow-lg" style={{ backgroundColor: colors.panelBackground, color: colors.text, border: `1px solid ${colors.border}` }}>
+                    Connection mode: click a point switch board and a load. Layout connections do not consume SLD outgoing ways.
                 </div>
             )}
 
@@ -445,7 +461,7 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
 
             {/* Floor Plan Tabs - Bottom */}
             <div
-                className={`absolute bottom-2 z-30 premium-glass rounded-full px-4 py-1.5 animate-slide-in-bottom transition-all duration-300 shadow-lg ${showLeftPanel ? 'left-64' : 'left-4'} right-4`}
+                className={`absolute bottom-2 z-30 premium-glass rounded-full px-4 py-1.5 animate-slide-in-bottom transition-all duration-300 shadow-lg ${showLeftPanel ? 'left-56' : 'left-4'} right-4`}
                 style={{ backgroundColor: colors.menuBackground }}
             >
                 <div className="flex items-center gap-2">
