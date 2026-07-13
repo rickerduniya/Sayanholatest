@@ -28,12 +28,14 @@ import { applyAutoArrange } from './utils/AutoArrange';
 import { exportProjectToFile, importProjectFromFile } from './utils/LocalProjectService';
 import { Toast } from './components/Toast';
 import { BrowserRouter, Navigate, Routes, Route, useNavigate } from 'react-router-dom';
+import { ChevronDown, LogOut, User } from 'lucide-react';
 import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage';
 import { useAuth } from './auth/AuthContext';
 
 function DesignerApp() {
     const navigate = useNavigate();
+    const { user, logout } = useAuth();
     const { getCurrentSheet, setSheet, updateSheet, sheets, setSheets, applyAutoRatingResults, undo, redo, calculateNetwork, addItem, selectItem, showCurrentValues, toggleShowCurrentValues, isPropertiesPanelOpen, isChatOpen, toggleChat } = useStore();
     const currentSheet = getCurrentSheet();
     const { colors, theme } = useTheme();
@@ -48,6 +50,8 @@ function DesignerApp() {
     const [panMode, setPanMode] = useState(false);
     const [isAddTextMode, setIsAddTextMode] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
+    const [showAccountMenu, setShowAccountMenu] = useState(false);
+    const [isSigningOut, setIsSigningOut] = useState(false);
 
     const [showVoltageDropDialog, setShowVoltageDropDialog] = useState(false);
     const [showNetworkMonitor, setShowNetworkMonitor] = useState(false);
@@ -70,6 +74,17 @@ function DesignerApp() {
 
     const canvasRef = useRef<CanvasRef>(null);
     const layoutRef = useRef<LayoutDesignerRef>(null);
+
+    const handleLogout = async () => {
+        setIsSigningOut(true);
+        try {
+            await logout();
+            navigate('/auth', { replace: true });
+        } finally {
+            setIsSigningOut(false);
+            setShowAccountMenu(false);
+        }
+    };
 
     // Set CSS custom property for mobile viewport height
     useEffect(() => {
@@ -633,9 +648,61 @@ function DesignerApp() {
                     </div>
                 )}
 
-                {/* View Mode Toggle (SLD/Layout) */}
-                <div className="premium-glass rounded-full px-2 py-1 z-50 pointer-events-auto" style={{ backgroundColor: colors.menuBackground }}>
-                    <ViewModeToggle />
+                <div className="flex items-start gap-2 z-50 pointer-events-auto">
+                    <div className="premium-glass rounded-full px-2 py-1" style={{ backgroundColor: colors.menuBackground }}>
+                        <ViewModeToggle />
+                    </div>
+
+                    {user && (
+                        <div className="relative">
+                            <button
+                                type="button"
+                                onClick={() => setShowAccountMenu(!showAccountMenu)}
+                                className="premium-glass flex items-center gap-2 rounded-full px-2 py-1.5 text-left shadow-sm transition-colors hover:bg-white/15"
+                                style={{ backgroundColor: colors.menuBackground, color: colors.text }}
+                                aria-expanded={showAccountMenu}
+                                aria-label="Open account menu"
+                            >
+                                <span className="grid h-7 w-7 place-items-center rounded-full bg-blue-500 text-xs font-bold text-white">
+                                    {(user.displayName || user.email).trim().charAt(0).toUpperCase()}
+                                </span>
+                                <span className="hidden max-w-32 sm:flex sm:flex-col">
+                                    <span className="truncate text-xs font-semibold leading-tight">{user.displayName}</span>
+                                    <span className="truncate text-[10px] opacity-65">{user.email}</span>
+                                </span>
+                                <ChevronDown size={14} className={`transition-transform ${showAccountMenu ? 'rotate-180' : ''}`} />
+                            </button>
+
+                            {showAccountMenu && (
+                                <div
+                                    className="absolute right-0 top-full mt-2 w-64 overflow-hidden rounded-xl border shadow-xl"
+                                    style={{ backgroundColor: colors.panelBackground, borderColor: colors.border, color: colors.text }}
+                                >
+                                    <div className="flex items-start gap-3 p-3">
+                                        <span className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-blue-500 text-white">
+                                            <User size={18} />
+                                        </span>
+                                        <div className="min-w-0">
+                                            <p className="text-[10px] font-semibold uppercase tracking-wide opacity-55">Signed in as</p>
+                                            <p className="truncate text-sm font-semibold">{user.displayName}</p>
+                                            <p className="truncate text-xs opacity-70">{user.email}</p>
+                                        </div>
+                                    </div>
+                                    <div className="border-t p-1.5" style={{ borderColor: colors.border }}>
+                                        <button
+                                            type="button"
+                                            onClick={handleLogout}
+                                            disabled={isSigningOut}
+                                            className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-sm text-red-500 transition-colors hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-60"
+                                        >
+                                            <LogOut size={16} />
+                                            {isSigningOut ? 'Signing out…' : 'Sign out'}
+                                        </button>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
 
                 {/* Toolbar - Centered (SLD mode only) */}

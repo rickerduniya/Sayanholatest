@@ -361,6 +361,11 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                     }}
                     isAddTextMode={isAddTextMode}
                     onAddTextComplete={() => setIsAddTextMode(false)}
+                    onSldConnectionResult={(status, message) => {
+                        setSyncStatus(status);
+                        setSyncMessage(message);
+                        window.setTimeout(() => setSyncStatus('idle'), 3500);
+                    }}
                 />
             </div>
 
@@ -396,7 +401,7 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
             {/* Left Sidebar - Floating */}
             {showLeftPanel && (
                 <div
-                    className="absolute left-4 top-14 bottom-16 w-48 z-40 premium-glass rounded-xl overflow-hidden flex flex-col transition-all duration-300 animate-slide-in-left shadow-xl"
+                    className="absolute left-4 top-12 bottom-4 w-48 z-40 premium-glass rounded-xl overflow-hidden flex flex-col transition-all duration-300 animate-slide-in-left shadow-xl"
                     style={{ backgroundColor: colors.panelBackground }}
                 >
                     <LayoutSidebar />
@@ -405,7 +410,7 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
 
             {drawingState.activeTool === 'connection' && (
                 <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 rounded-full px-4 py-2 text-xs font-medium shadow-lg" style={{ backgroundColor: colors.panelBackground, color: colors.text, border: `1px solid ${colors.border}` }}>
-                    Connection mode: click a point switch board and a load. Layout connections do not consume SLD outgoing ways.
+                    Connection mode: click a Point Switch Board and a load. Each connection uses the next free SLD output, from out1 to out9.
                 </div>
             )}
 

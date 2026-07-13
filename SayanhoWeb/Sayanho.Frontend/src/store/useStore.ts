@@ -54,7 +54,7 @@ interface StoreState {
     selectAll: () => void;
     clearSelection: () => void;
 
-    addConnector: (connector: Connector) => void;
+    addConnector: (connector: Connector, sheetId?: string) => void;
     selectConnector: (indexOrIndices: number | number[] | null, openPanel?: boolean) => void;
     setEditMode: (mode: boolean) => void;
     toggleChat: () => void;
@@ -801,8 +801,34 @@ export const useStore = create<StoreState>((set, get) => ({
 
     clearSelection: () => set({ selectedItemIds: [], isPropertiesPanelOpen: false }),
 
-    addConnector: (connector) => {
-        get().takeSnapshot();
+    addConnector: (connector, sheetId) => {
+        const targetSheetId = sheetId ?? get().activeSheetId;
+        const targetSheet = get().sheets.find(sheet => sheet.sheetId === targetSheetId);
+        if (!targetSheet) return;
+
+        if (targetSheetId === get().activeSheetId) {
+            get().takeSnapshot();
+        } else {
+            set((state) => {
+                const snapshot: CanvasSheetState = deepClone({
+                    canvasItems: targetSheet.canvasItems,
+                    storedConnectors: targetSheet.storedConnectors,
+                    existingLinePoints: targetSheet.existingLinePoints,
+                    existingConnections: targetSheet.existingConnections,
+                    scale: targetSheet.scale,
+                    stagingItems: state.stagingItems,
+                    placedStagingIds: Array.from(state.placedStagingIds)
+                });
+
+                return {
+                    sheets: state.sheets.map(sheet => sheet.sheetId === targetSheetId ? {
+                        ...sheet,
+                        undoStack: [...sheet.undoStack, snapshot].slice(-MAX_HISTORY),
+                        redoStack: []
+                    } : sheet)
+                };
+            });
+        }
 
         let finalConnector = { ...connector };
         const classify = (item: CanvasItem | undefined, pointKey: string | undefined): 'in' | 'out' | 'other' => {
@@ -841,7 +867,7 @@ export const useStore = create<StoreState>((set, get) => ({
         }
 
         set((state) => ({
-            sheets: state.sheets.map(s => s.sheetId === state.activeSheetId ? {
+            sheets: state.sheets.map(s => s.sheetId === targetSheetId ? {
                 ...s,
                 storedConnectors: [...s.storedConnectors, finalConnector]
             } : s)

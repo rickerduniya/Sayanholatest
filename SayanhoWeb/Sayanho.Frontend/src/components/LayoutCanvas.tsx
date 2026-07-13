@@ -18,6 +18,7 @@ import {
     OcrItem
 } from '../types/layout';
 import { Connector, Point } from '../types';
+import { createConnectorWithDefaults } from '../utils/ConnectorFactory';
 import {
     snapToWall,
     constrainWallAngle,
@@ -84,7 +85,17 @@ interface LayoutCanvasProps {
     showDoors?: boolean;
     showWindows?: boolean;
     showRooms?: boolean;
+    onSldConnectionResult?: (status: 'success' | 'error', message: string) => void;
 }
+
+const LOAD_CATEGORIES = new Set(['appliances', 'lighting', 'fans', 'others']);
+
+const isPointSwitchBoard = (component: LayoutComponent) => component.type === 'point_switch_board';
+
+const isConnectableLoad = (component: LayoutComponent) => {
+    const category = getLayoutComponentDef(component.type)?.category;
+    return category ? LOAD_CATEGORIES.has(category) : false;
+};
 
 // Room type to color mapping
 const ROOM_COLORS: Record<string, string> = {
@@ -124,7 +135,8 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
     showWalls = true,
     showDoors = true,
     showWindows = true,
-    showRooms = true
+    showRooms = true,
+    onSldConnectionResult
 }, ref) => {
     const stageRef = useRef<any>(null);
     const { theme, colors } = useTheme();
@@ -150,6 +162,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
         addComponent,
         addComponentWithId,
         addConnection,
+        updateConnection,
         selectedElementIds,
         selectElement,
         clearSelection,
@@ -197,6 +210,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
     const [backgroundImage, setBackgroundImage] = useState<HTMLImageElement | null>(null);
     const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
     const [connectionSource, setConnectionSource] = useState<string | null>(null);
+    const [isCreatingSldConnection, setIsCreatingSldConnection] = useState(false);
 
     // HUD State
     const [hoverInfo, setHoverInfo] = useState<{ x: number, y: number, text: string } | null>(null);
@@ -278,8 +292,126 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
 
     // PHASE 3.1: Read SLD connectors for Magic Wire feature
     // Include ALL sheets to support cross-sheet connections
-    const { sheets } = useStore();
+    const { sheets, addConnector } = useStore();
     const sldConnectors = sheets.flatMap(s => s.storedConnectors);
+
+    const createSynchronizedPointSwitchBoardConnection = async (
+        firstComponent: LayoutComponent,
+        secondComponent: LayoutComponent,
+        routedPath: Point[]
+    ) => {
+        if (isCreatingSldConnection || !currentPlan) return;
+
+        const switchBoard = isPointSwitchBoard(firstComponent)
+            ? firstComponent
+            : isPointSwitchBoard(secondComponent)
+                ? secondComponent
+                : null;
+        const load = switchBoard?.id === firstComponent.id ? secondComponent : firstComponent;
+
+        if (!switchBoard || !isConnectableLoad(load)) {
+            onSldConnectionResult?.('error', 'Select one Point Switch Board and one load.');
+            return;
+        }
+
+        const findLinkedSldItem = (component: LayoutComponent) => sheets
+            .flatMap(sheet => sheet.canvasItems)
+            .find(item => item.uniqueID === component.sldItemId || item.properties?.[0]?.['_layoutComponentId'] === component.id);
+
+        const switchBoardSldItem = findLinkedSldItem(switchBoard);
+        const loadSldItem = findLinkedSldItem(load);
+
+        if (!switchBoardSldItem || !loadSldItem) {
+            onSldConnectionResult?.('error', 'Place the Point Switch Board and load on the same SLD sheet before connecting them.');
+            return;
+        }
+
+        const switchBoardSheet = sheets.find(sheet => sheet.canvasItems.some(item => item.uniqueID === switchBoardSldItem.uniqueID));
+        const loadSheet = sheets.find(sheet => sheet.canvasItems.some(item => item.uniqueID === loadSldItem.uniqueID));
+
+        if (!switchBoardSheet || !loadSheet || switchBoardSheet.sheetId !== loadSheet.sheetId) {
+            onSldConnectionResult?.('error', 'The Point Switch Board and load must be on the same SLD sheet.');
+            return;
+        }
+
+        const layoutPath = [switchBoard.position, ...routedPath.slice(1), load.position];
+        const existingLayoutConnection = currentPlan.connections.find(connection =>
+            (connection.sourceId === switchBoard.id && connection.targetId === load.id) ||
+            (connection.sourceId === load.id && connection.targetId === switchBoard.id)
+        );
+        const ensureLayoutConnection = () => {
+            if (existingLayoutConnection) {
+                updateConnection(existingLayoutConnection.id, {
+                    sourceId: switchBoard.id,
+                    targetId: load.id,
+                    path: layoutPath,
+                    type: 'power'
+                });
+                return;
+            }
+
+            addConnection({
+                sourceId: switchBoard.id,
+                targetId: load.id,
+                path: layoutPath,
+                type: 'power'
+            });
+        };
+
+        const existingSldConnection = switchBoardSheet.storedConnectors.find(connector =>
+            connector.sourceItem.uniqueID === switchBoardSldItem.uniqueID &&
+            connector.targetItem.uniqueID === loadSldItem.uniqueID
+        );
+
+        if (existingSldConnection) {
+            ensureLayoutConnection();
+            onSldConnectionResult?.('success', `Already connected in SLD via ${existingSldConnection.sourcePointKey}.`);
+            return;
+        }
+
+        const outputPorts = Object.keys(switchBoardSldItem.connectionPoints || {})
+            .filter(port => /^out[1-9]$/.test(port))
+            .sort((first, second) => Number(first.slice(3)) - Number(second.slice(3)));
+        const usedOutputPorts = new Set(
+            switchBoardSheet.storedConnectors
+                .filter(connector => connector.sourceItem.uniqueID === switchBoardSldItem.uniqueID)
+                .map(connector => connector.sourcePointKey)
+                .filter(port => outputPorts.includes(port))
+        );
+        const nextOutputPort = outputPorts.find(port => !usedOutputPorts.has(port));
+
+        if (!nextOutputPort) {
+            onSldConnectionResult?.('error', 'This Point Switch Board already uses all 9 outgoing connections.');
+            return;
+        }
+
+        setIsCreatingSldConnection(true);
+        try {
+            const result = await createConnectorWithDefaults({
+                activeSheet: switchBoardSheet,
+                allSheets: sheets,
+                sourceItem: switchBoardSldItem,
+                sourcePointKey: nextOutputPort,
+                targetItem: loadSldItem,
+                targetPointKey: 'in',
+                materialType: 'Wiring'
+            });
+
+            if (result.error || !result.connector) {
+                onSldConnectionResult?.('error', result.error || 'Unable to create the SLD connection.');
+                return;
+            }
+
+            addConnector(result.connector, switchBoardSheet.sheetId);
+            ensureLayoutConnection();
+            onSldConnectionResult?.('success', `Connected via ${nextOutputPort}; ${usedOutputPorts.size + 1} of 9 SLD outputs used.`);
+        } catch (error) {
+            console.error('[LayoutCanvas] Failed to create synchronized SLD connection', error);
+            onSldConnectionResult?.('error', 'Unable to create the SLD connection. Please try again.');
+        } finally {
+            setIsCreatingSldConnection(false);
+        }
+    };
 
     // Context Menu State
     const [menu, setMenu] = useState<{ visible: boolean; x: number; y: number; componentId: string | null }>({
@@ -763,23 +895,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                             setConnectionSource(null);
                             return;
                         }
-                        const connectionAlreadyExists = currentPlan.connections.some(connection =>
-                            (connection.sourceId === connectionSource && connection.targetId === clickedComponent.id) ||
-                            (connection.sourceId === clickedComponent.id && connection.targetId === connectionSource)
-                        );
-                        const connectsSwitchBoard = sourceComponent?.type === 'point_switch_board' ||
-                            sourceComponent?.type === 'avg_5a_switch_board' ||
-                            clickedComponent.type === 'point_switch_board' ||
-                            clickedComponent.type === 'avg_5a_switch_board';
-
-                        if (!connectionAlreadyExists) {
-                            addConnection({
-                                sourceId: connectionSource,
-                                targetId: clickedComponent.id,
-                                path: [sourceComponent.position, ...currentPath.slice(1), clickedComponent.position],
-                                type: connectsSwitchBoard ? 'control' : 'power'
-                            });
-                        }
+                        void createSynchronizedPointSwitchBoardConnection(sourceComponent, clickedComponent, currentPath);
                         setIsDrawing(false);
                         setCurrentPath([]);
                         setConnectionSource(null);
