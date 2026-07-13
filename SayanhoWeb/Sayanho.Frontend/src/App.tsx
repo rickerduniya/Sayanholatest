@@ -27,8 +27,10 @@ import { updateItemVisuals } from './utils/SvgUpdater';
 import { applyAutoArrange } from './utils/AutoArrange';
 import { exportProjectToFile, importProjectFromFile } from './utils/LocalProjectService';
 import { Toast } from './components/Toast';
-import { BrowserRouter, Routes, Route, useNavigate } from 'react-router-dom';
+import { BrowserRouter, Navigate, Routes, Route, useNavigate } from 'react-router-dom';
 import LandingPage from './components/LandingPage';
+import AuthPage from './components/AuthPage';
+import { useAuth } from './auth/AuthContext';
 
 function DesignerApp() {
     const navigate = useNavigate();
@@ -849,10 +851,21 @@ function App() {
         <BrowserRouter>
             <Routes>
                 <Route path="/" element={<LandingPage />} />
-                <Route path="/design" element={<DesignerApp />} />
+                <Route path="/auth" element={<AuthPage />} />
+                <Route path="/design" element={<ProtectedDesignerRoute />} />
             </Routes>
         </BrowserRouter>
     );
+}
+
+function ProtectedDesignerRoute() {
+    const { user, isLoading } = useAuth();
+
+    if (isLoading) {
+        return <div className="min-h-screen grid place-items-center text-slate-600 dark:text-slate-200">Loading workspace…</div>;
+    }
+
+    return user ? <DesignerApp /> : <Navigate to="/auth" replace />;
 }
 
 

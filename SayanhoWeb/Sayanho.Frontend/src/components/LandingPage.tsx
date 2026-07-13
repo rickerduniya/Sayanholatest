@@ -2,9 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Sun, Moon } from 'lucide-react';
 import './LandingPage.css';
+import { useAuth } from '../auth/AuthContext';
+import { AdSlot } from './AdSlot';
 
 const LandingPage: React.FC = () => {
     const navigate = useNavigate();
+    const { user } = useAuth();
     const [scrolled, setScrolled] = useState(false);
     const [activeFeature, setActiveFeature] = useState(0);
     const [isDark, setIsDark] = useState(() => {
@@ -58,6 +61,8 @@ const LandingPage: React.FC = () => {
         }
     ];
 
+    const openDesigner = () => navigate(user ? '/design' : '/auth');
+
     return (
         <div className={`lp ${isDark ? 'dark' : 'light'}`}>
             {/* Navigation */}
@@ -75,8 +80,8 @@ const LandingPage: React.FC = () => {
                     >
                         {isDark ? <Sun size={18} /> : <Moon size={18} />}
                     </button>
-                    <button className="lp-cta-btn" onClick={() => navigate('/design')}>
-                        Open Designer
+                    <button className="lp-cta-btn" onClick={openDesigner}>
+                        {user ? 'Open Designer' : 'Sign in'}
                     </button>
                 </div>
             </nav>
@@ -90,7 +95,7 @@ const LandingPage: React.FC = () => {
                         Calculate voltage drop, auto-rate switchgear, and sync designs across workspace views.
                     </p>
                     <div className="hero-btns">
-                        <button className="btn-primary" onClick={() => navigate('/design')}>
+                        <button className="btn-primary" onClick={openDesigner}>
                             Start Designing →
                         </button>
                     </div>
@@ -103,6 +108,8 @@ const LandingPage: React.FC = () => {
                     />
                 </div>
             </header>
+
+            <AdSlot slotId="landing-after-hero" />
 
             {/* Interactive Features Section - Manual Tabs Only */}
             <section id="features" className="lp-features">
@@ -136,6 +143,8 @@ const LandingPage: React.FC = () => {
                     </div>
                 </div>
             </section>
+
+            <AdSlot slotId="landing-before-cta" />
 
             {/* Specifications Grid */}
             <section id="specs" className="lp-specs">
@@ -207,9 +216,9 @@ const LandingPage: React.FC = () => {
             {/* CTA Section */}
             <section className="lp-cta">
                 <h2>Ready to Design?</h2>
-                <p>No account required. Start designing immediately.</p>
-                <button className="btn-primary large" onClick={() => navigate('/design')}>
-                    Launch Designer
+                <p>Create a free account to keep your projects private.</p>
+                <button className="btn-primary large" onClick={openDesigner}>
+                    {user ? 'Launch Designer' : 'Create Free Account'}
                 </button>
             </section>
 

@@ -5,6 +5,8 @@ using Sayanho.Backend.Filters;
 using Sayanho.Backend.Middleware;
 using Sayanho.Backend.Services;
 using PdfSharpCore.Fonts;
+using Microsoft.AspNetCore.RateLimiting;
+using System.Threading.RateLimiting;
 
 // Configure PDFSharp Font Resolver
 GlobalFontSettings.FontResolver = new CustomFontResolver();
@@ -15,10 +17,10 @@ var builder = WebApplication.CreateBuilder(args);
 var port = Environment.GetEnvironmentVariable("PORT") ?? "5000";
 builder.WebHost.UseUrls($"http://0.0.0.0:{port}");
 
-// Configure Kestrel to allow larger request bodies (fallback for uncompressed large payloads)
+// Large project files are compressed by the client. Keep a bounded fallback size.
 builder.WebHost.ConfigureKestrel(options =>
 {
-    options.Limits.MaxRequestBodySize = 200 * 1024 * 1024; // 200MB
+    options.Limits.MaxRequestBodySize = 25 * 1024 * 1024; // 25MB
 });
 
 // Initialize DatabaseLoader
@@ -47,6 +49,17 @@ builder.Services.AddControllers(options =>
 });
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
+builder.Services.AddSingleton<AuthenticationService>();
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddFixedWindowLimiter("auth", limiterOptions =>
+    {
+        limiterOptions.PermitLimit = 10;
+        limiterOptions.Window = TimeSpan.FromMinutes(1);
+        limiterOptions.QueueLimit = 0;
+    });
+});
 
 // Add CORS - read allowed origins from appsettings
 var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? new string[0];
@@ -55,9 +68,16 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("ConfiguredCors", policy =>
     {
-        policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+        if (allowedOrigins.Length > 0)
+        {
+            policy.WithOrigins(allowedOrigins)
+                  .AllowAnyMethod()
+                  .AllowAnyHeader();
+        }
+        else
+        {
+            policy.SetIsOriginAllowed(_ => false);
+        }
     });
 });
 
@@ -71,6 +91,8 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseCors("ConfiguredCors");
+app.UseRateLimiter();
+app.UseMiddleware<SessionAuthenticationMiddleware>();
 
 // Add decompression middleware to handle GZIP-compressed request bodies from frontend
 // This must be BEFORE any middleware that reads the request body

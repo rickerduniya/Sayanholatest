@@ -99,6 +99,19 @@ When deployed to a hosting service (e.g., Render, Azure), set the `ASPNETCORE_EN
 - **Diagramming**: Drag and drop items from the toolbox, move them on the canvas.
 - **Network Analysis**: Run electrical network analysis using the ported C# logic.
 - **Save/Load**: Save diagrams to the backend and load them.
+- **Private projects**: Create an account to keep cloud projects isolated from other users.
+
+## Accounts and Project Privacy
+
+The backend includes a self-hosted account system with PBKDF2 password hashing, expiring server-side sessions, rate-limited sign-in, and user-specific project directories. The frontend keeps the session token only for the active browser session.
+
+For production, set `AllowedOrigins` to the exact deployed frontend domains and use persistent storage for the backend `Data` directory. The Render free filesystem is ephemeral, so accounts and saved projects will be reset after a redeploy or restart unless you attach persistent storage or move this data to a managed database.
+
+Existing files in `Data/Diagrams` predate user ownership and are intentionally not exposed after enabling accounts. Move any project you need to preserve into the appropriate user's directory only through a trusted administrator process.
+
+## Advertising Slots
+
+Two compact, responsive advertising containers are available on the public landing page: one after the hero and one after the feature showcase. They are deliberately excluded from the designer workspace so ads never cover the canvas, toolbars, dialogs, or component library. Each slot exposes a `data-ad-slot` attribute in `Sayanho.Frontend/src/components/AdSlot.tsx` for your chosen advertising provider.
 
 ## Notes
 

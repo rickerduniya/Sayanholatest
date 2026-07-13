@@ -3,6 +3,7 @@ using Sayanho.Core.Logic;
 using System.Collections.Generic;
 using Microsoft.Data.Sqlite;
 using System.Linq;
+using Sayanho.Backend.Security;
 
 namespace Sayanho.Backend.Controllers
 {
@@ -13,6 +14,11 @@ namespace Sayanho.Backend.Controllers
         [HttpGet("schema")]
         public IActionResult GetSchema()
         {
+            if (User.GetUserId() is null)
+            {
+                return Unauthorized();
+            }
+
             var result = new Dictionary<string, object>();
             var schema = new Dictionary<string, object>();
 
@@ -103,27 +109,34 @@ namespace Sayanho.Backend.Controllers
         [HttpPost("query")]
         public IActionResult ExecuteQuery([FromBody] QueryRequest request)
         {
+            if (User.GetUserId() is null)
+            {
+                return Unauthorized();
+            }
+
             if (string.IsNullOrWhiteSpace(request.Query))
             {
                 return BadRequest(new { message = "Query is required" });
             }
 
-            // Basic safety check - only allow SELECT
-            if (!request.Query.TrimStart().StartsWith("SELECT", System.StringComparison.OrdinalIgnoreCase))
+            var query = request.Query.Trim();
+            var prohibitedTerms = new[] { ";", "ATTACH", "DETACH", "PRAGMA", "INSERT", "UPDATE", "DELETE", "DROP", "ALTER", "VACUUM" };
+            if (!query.StartsWith("SELECT", System.StringComparison.OrdinalIgnoreCase) || prohibitedTerms.Any(term => query.Contains(term, System.StringComparison.OrdinalIgnoreCase)))
             {
-                return BadRequest(new { message = "Only SELECT queries are allowed." });
+                return BadRequest(new { message = "Only a single read-only SELECT query is allowed." });
             }
 
             try
             {
                 using var conn = DatabaseLoader.OpenConnection();
                 using var cmd = conn.CreateCommand();
-                cmd.CommandText = request.Query;
+                cmd.CommandText = query;
+                cmd.CommandTimeout = 5;
 
                 var results = new List<Dictionary<string, object>>();
                 using var reader = cmd.ExecuteReader();
                 
-                while (reader.Read())
+                while (reader.Read() && results.Count < 500)
                 {
                     var row = new Dictionary<string, object>();
                     for (int i = 0; i < reader.FieldCount; i++)

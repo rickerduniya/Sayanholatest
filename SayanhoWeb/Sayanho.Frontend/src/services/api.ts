@@ -5,13 +5,18 @@ import { useStore } from '../store/useStore';
 import { stripSheetsForApi, compressPayload, logPayloadStats, filterTextBoxesFromSheets } from '../utils/payloadUtils';
 
 import { CacheService } from './CacheService';
+import { API_URL, AUTH_TOKEN_KEY } from '../config/api';
 
-const API_URL = import.meta.env.VITE_API_URL;
 // Debug logging for API
 const DEBUG = true;
 let __reqId = 0;
 if (DEBUG) {
     axios.interceptors.request.use((config) => {
+        const token = sessionStorage.getItem(AUTH_TOKEN_KEY);
+        if (token) {
+            config.headers = config.headers ?? {};
+            (config.headers as any).Authorization = `Bearer ${token}`;
+        }
         const rid = ++__reqId;
         const startTime = performance.now();
         (config as any).metadata = { start: startTime, rid };
