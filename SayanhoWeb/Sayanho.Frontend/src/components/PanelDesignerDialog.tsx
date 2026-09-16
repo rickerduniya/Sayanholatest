@@ -4,6 +4,9 @@ import { useTheme } from '../context/ThemeContext';
 import { PanelRenderer } from '../utils/PanelRenderer';
 import { CanvasItem } from '../types';
 import { sortOptionStringsAsc } from '../utils/sortUtils';
+import { useStore } from '../store/useStore';
+import { calculateGeometry } from '../utils/GeometryCalculator';
+import { findIncompatibleConnectorsForItem } from '../utils/PhaseCompatibility';
 
 interface PanelDesignerProps {
     isOpen: boolean;
@@ -771,7 +774,35 @@ export const PanelDesignerDialog: React.FC<PanelDesignerProps> = ({
                     <div className="flex gap-2">
                         <button
                             onClick={() => {
-                                const finalItem = { ...localItem, svgContent: PanelRenderer.generateSvg(localItem) };
+                                let finalItem = { ...localItem, svgContent: PanelRenderer.generateSvg(localItem) };
+                                // Recompute connection points for the edited incomer/outgoing layout
+                                // so phase validation sees the same out{ N }/in{ N } mapping as the canvas.
+                                try {
+                                    const geometry = calculateGeometry(finalItem);
+                                    if (geometry) {
+                                        finalItem = { ...finalItem, size: geometry.size, connectionPoints: geometry.connectionPoints };
+                                    }
+                                } catch { /* keep local geometry on failure */ }
+                                // Block a panel reconfig (incomer Pole/Type or outgoing
+                                // Pole) that would invalidate existing wiring.
+                                try {
+                                    const st = useStore.getState();
+                                    const sheet = st.getCurrentSheet();
+                                    if (sheet) {
+                                        const items = sheet.canvasItems.map(ci => ci.uniqueID === finalItem.uniqueID ? finalItem : ci);
+                                        const issues = findIncompatibleConnectorsForItem(
+                                            finalItem,
+                                            sheet.storedConnectors,
+                                            items
+                                        );
+                                        if (issues.length > 0) {
+                                            const details = issues.slice(0, 3).map(i => `• ${i.error}`).join('\n');
+                                            const more = issues.length > 3 ? `\n...and ${issues.length - 3} more.` : '';
+                                            alert(`Cannot save. This panel change would make ${issues.length} existing connection(s) phase-incompatible (single-phase vs 3-phase).\n\n${details}${more}\n\nDelete or rewire those connections first, or choose a compatible Pole configuration.`);
+                                            return;
+                                        }
+                                    }
+                                } catch { /* validation must never block save on internal error */ }
                                 onSave(finalItem);
                             }}
                             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg flex items-center gap-2 text-sm font-medium transition-colors"

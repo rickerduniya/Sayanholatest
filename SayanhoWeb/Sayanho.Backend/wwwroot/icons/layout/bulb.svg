@@ -1,6 +1,11 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 90 50">
-<line x1="2" y1="25" x2="46" y2="25" stroke="#000" stroke-width="4"/>
-<circle cx="65" cy="25" r="20" fill="#fff" stroke="#000" stroke-width="4"/>
+<!-- Wall-mount top view convention: LEFT edge (-x) = wall/base side, RIGHT (+x) = room/bulb side. -->
+<!-- Base plate sits on the wall face -->
+<rect x="0" y="16" width="9" height="18" fill="#000"/>
+<!-- Stem from base to bulb -->
+<line x1="9" y1="25" x2="46" y2="25" stroke="#000" stroke-width="4"/>
+<!-- Bulb circle facing the room -->
+<circle cx="65" cy="25" r="19" fill="#fff" stroke="#000" stroke-width="4"/>
 <line x1="57" y1="17" x2="73" y2="33" stroke="#000" stroke-width="4"/>
 <line x1="73" y1="17" x2="57" y2="33" stroke="#000" stroke-width="4"/>
 </svg>

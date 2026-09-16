@@ -7,7 +7,7 @@ import {
     Zap, Type, Moon, Sun,
     Undo, Redo, Image as ImageIcon,
     MousePointer2, Hand, Calculator, Copy,
-    Eye, EyeOff, RotateCcw, Maximize, LayoutGrid
+    Eye, EyeOff, RotateCcw, Maximize, LayoutGrid, Bot
 } from 'lucide-react';
 
 interface ToolbarProps {
@@ -24,6 +24,9 @@ interface ToolbarProps {
     onToggleMenu: () => void;
     showChat: boolean;
     onToggleChat: () => void;
+    /** Design Agent panel. Optional so the toolbar stays usable in isolation. */
+    showAgent?: boolean;
+    onToggleAgent?: () => void;
     onAutoRate: () => void;
     onAddText: () => void;
     onUndo: () => void;
@@ -43,6 +46,7 @@ export const Toolbar: React.FC<ToolbarProps> = ({
     showLeftPanel, onToggleLeftPanel,
     showMenu, onToggleMenu,
     showChat, onToggleChat,
+    showAgent, onToggleAgent,
     onAutoRate, onAddText,
     onUndo, onRedo,
     panMode, onSetPanMode,
@@ -149,6 +153,14 @@ export const Toolbar: React.FC<ToolbarProps> = ({
                 tooltip="Toggle Chat Panel"
                 active={showChat}
             />
+            {onToggleAgent && (
+                <ToolbarButton
+                    icon={<Bot size={16} />}
+                    onClick={onToggleAgent}
+                    tooltip="Design Agent — place loads, size boards and wire the SLD automatically"
+                    active={showAgent}
+                />
+            )}
 
             <ToolbarSeparator />
 

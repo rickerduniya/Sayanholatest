@@ -209,9 +209,13 @@ export const LAYOUT_COMPONENT_DEFINITIONS: Record<LayoutComponentType, LayoutCom
         realSizeMm: { width: 110, height: 110 },
         size: { width: 24, height: 24 },
         sldEquivalent: 'Bulb',
-        placementType: 'ceiling',
+        // Wall, not ceiling: Indian domestic practice mounts bulbs on a wall
+        // batten/bracket at ~2.0-2.2 m. Bare RCC ceilings mean a ceiling fitting
+        // needs conduit dropped across the slab, and the ceiling is taken by the
+        // fan point. See agent/skills/load-placement.md Section 2.1.
+        placementType: 'wall',
         defaultWattage: 9,
-        description: 'Light Point / Bulb (CPWD: circle with cross)',
+        description: 'Light Point / Bulb (CPWD: circle with cross) — wall mounted',
     },
 
     'tube_light': {
@@ -220,15 +224,18 @@ export const LAYOUT_COMPONENT_DEFINITIONS: Record<LayoutComponentType, LayoutCom
         category: 'lighting',
         symbol: '═',
         svgIcon: 'layout/tube_light.svg',
-        // Standard 4ft T8 batten: 1200 × 38 mm
-        realSizeMm: { width: 1200, height: 38 },
-        size: { width: 60, height: 10 },
-        minDisplayPx: 30,
-        maxDisplayPx: 200,
+        // Physical 4ft T8 batten is 1200 × 38 mm, but drawn at 60% (720 × 23)
+        // to keep long battens from dominating small rooms — user request.
+        realSizeMm: { width: 720, height: 23 },
+        size: { width: 36, height: 6 },
+        minDisplayPx: 18,
+        maxDisplayPx: 120,
         sldEquivalent: 'Tube Light',
-        placementType: 'ceiling',
+        // Wall, not ceiling — standard Indian domestic batten mounting at
+        // ~2.1-2.4 m, reachable for tube replacement without a ladder.
+        placementType: 'wall',
         defaultWattage: 36,
-        description: 'Fluorescent / LED Batten Tube Light',
+        description: 'Fluorescent / LED Batten Tube Light — wall mounted',
     },
 
     // =========================================================================

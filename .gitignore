@@ -1,0 +1,73 @@
+# Root gitignore for Sayanho repo (applies repo-wide, including SayanhoWeb/)
+# Dependencies
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build outputs
+dist/
+build/
+**/bin/
+**/obj/
+out/
+.next/
+.nuxt/
+.cache/
+.parcel-cache/
+coverage/
+.nyc_output/
+
+# ASP.NET / VS artifacts
+*.dll
+*.exe
+*.pdb
+*.cache
+*.user
+*.suo
+*.vspscc
+*.vssscc
+*.vsidx
+.vs/
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+
+# Logs and debug traces (never publish)
+*.log
+logs/
+Qwenlog.json
+network_logs_*.json
+
+# Local user auth database (contains password hashes - NEVER commit)
+# Note: schedule.db is intentionally tracked (seed data); auth.db must stay untracked.
+**/Data/auth.db
+**/*.sqlite-journal
+**/*.sqlite-wal
+**/*.sqlite-shm
+
+# Local environment overrides (non-secret .env.development / .env.production stay tracked)
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+local.settings.json
+
+# Temp / backup
+*.tmp
+*.temp
+*.bak
+*.backup
+*.tgz
+.eslintcache
+.npm
+azurite/

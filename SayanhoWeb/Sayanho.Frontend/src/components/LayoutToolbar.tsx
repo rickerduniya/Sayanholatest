@@ -1,7 +1,7 @@
 // Layout Toolbar - Enhanced drawing tools and actions for floor plan editing
 // Features: drawing tools, wire routing, measurement mode, sync action
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
     MousePointer2,
     Hand,
@@ -29,7 +29,8 @@ import {
     Wand2,
     Type,
     Bot,
-    GitBranch
+    GitBranch,
+    PanelRight
 } from 'lucide-react';
 import { useLayoutStore } from '../store/useLayoutStore';
 import { useTheme } from '../context/ThemeContext';
@@ -46,6 +47,9 @@ interface LayoutToolbarProps {
     onToggleMagicWires: () => void;
     showChat: boolean;
     onToggleChat: () => void;
+    /** Design Agent panel. Optional: the toolbar renders without it. */
+    showAgent?: boolean;
+    onToggleAgent?: () => void;
     isAddTextMode?: boolean;
     onAddText?: () => void;
     // Layer toggles
@@ -57,6 +61,17 @@ interface LayoutToolbarProps {
     onToggleWindows?: () => void;
     showRooms?: boolean;
     onToggleRooms?: () => void;
+    // Right-hand properties panel
+    showInspector?: boolean;
+    onToggleInspector?: () => void;
+    /**
+     * Surface a short status message to the user.
+     *
+     * Detect Rooms / Reset / Smart Stitch previously reported only to the
+     * console, so from the UI they looked like buttons that did nothing —
+     * especially Detect Rooms when it found zero rooms.
+     */
+    onNotify?: (status: 'success' | 'error', message: string) => void;
 }
 
 interface ToolButtonProps {
@@ -116,9 +131,17 @@ const ToolButton: React.FC<ToolButtonProps> = ({
     );
 };
 
-const Divider: React.FC = () => (
-    <div className="w-px h-6 mx-1" style={{ backgroundColor: 'rgba(0,0,0,0.15)' }} />
-);
+const Divider: React.FC = () => {
+    // Was hardcoded to a dark colour, so it disappeared entirely against the
+    // dark panel background and the toolbar read as one undifferentiated row.
+    const { theme } = useTheme();
+    return (
+        <div
+            className="w-px h-6 mx-1"
+            style={{ backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.18)' : 'rgba(0,0,0,0.15)' }}
+        />
+    );
+};
 
 const ToolGroup: React.FC<{ children: React.ReactNode }> = ({ children }) => (
     <div className="flex items-center gap-0.5 relative">
@@ -137,6 +160,8 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
     onToggleMagicWires,
     showChat,
     onToggleChat,
+    showAgent,
+    onToggleAgent,
     isAddTextMode,
     onAddText,
     showWalls = true,
@@ -146,7 +171,10 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
     showWindows = true,
     onToggleWindows,
     showRooms = true,
-    onToggleRooms
+    onToggleRooms,
+    showInspector = true,
+    onToggleInspector,
+    onNotify
 }) => {
     const { colors } = useTheme();
     const {
@@ -172,14 +200,43 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
     const [showDebug, setShowDebug] = useState(false);
     const [copied, setCopied] = useState(false);
     const [showLayers, setShowLayers] = useState(false);
+    const layersRef = useRef<HTMLDivElement>(null);
+
+    // The layers popup had no dismiss behaviour: once opened it stayed open and
+    // covered the canvas until you clicked the toggle again.
+    useEffect(() => {
+        if (!showLayers) return;
+
+        const handlePointerDown = (event: MouseEvent) => {
+            if (layersRef.current?.contains(event.target as Node)) return;
+            setShowLayers(false);
+        };
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') setShowLayers(false);
+        };
+
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [showLayers]);
 
     const handleDetectRooms = async () => {
-        console.error('[Detect Rooms] clicked');
         const plan = getCurrentFloorPlan();
         if (!plan) {
-            console.error('[Detect Rooms] no active floor plan');
+            onNotify?.('error', 'No floor plan is open.');
             return;
         }
+        if (plan.walls.length < 3) {
+            // Room detection works by finding closed cycles in the wall graph, so
+            // with almost no walls it can only ever return nothing. Say that
+            // instead of silently succeeding with zero rooms.
+            onNotify?.('error', 'Draw or detect walls first — rooms are found from enclosed wall loops.');
+            return;
+        }
+
         try {
             takeSnapshot();
             const { FloorplanApiService } = await import('../services/FloorplanApiService');
@@ -195,10 +252,16 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                 windows: plan.windows
             }, ocrItems);
 
-            console.error('[Detect Rooms] rooms detected:', rooms.length, 'with OCR items:', ocrItems.length);
             updateFloorPlan(plan.id, { rooms });
+
+            if (rooms.length === 0) {
+                onNotify?.('error', 'No enclosed rooms found. Check for gaps in the walls, then try Apply Smart Stitch.');
+            } else {
+                onNotify?.('success', `Detected ${rooms.length} room${rooms.length === 1 ? '' : 's'}.`);
+            }
         } catch (e) {
             console.error('[Detect Rooms] failed', e);
+            onNotify?.('error', 'Room detection failed. See console for details.');
         }
     };
 
@@ -299,7 +362,7 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                         />
                     )}
                     {/* Layers Toggle */}
-                    <div className="relative">
+                    <div className="relative" ref={layersRef}>
                         <ToolButton
                             icon={<React.Fragment>
                                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
@@ -309,50 +372,38 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                             onClick={() => setShowLayers(!showLayers)}
                         />
                         {showLayers && (
-                            <div className="absolute top-full mt-2 left-1/2 -translate-x-1/2 mb-2 w-48 bg-[#1e1e1e] border border-white/20 rounded-lg shadow-xl p-2 z-50 animate-fade-in flex flex-col gap-1">
-                                <div className="text-[10px] font-bold uppercase text-gray-400 px-2 pb-1 border-b border-white/10 mb-1">
+                            /* Popup was hardcoded to #1e1e1e with white text, so
+                               in light mode it was a black box that clashed with
+                               the rest of the UI. Now themed. */
+                            <div
+                                className="absolute top-full mt-2 left-1/2 -translate-x-1/2 w-48 rounded-lg shadow-xl p-2 z-50 animate-fade-in flex flex-col gap-1 border"
+                                style={{
+                                    backgroundColor: colors.panelBackground,
+                                    borderColor: colors.border,
+                                    color: colors.text
+                                }}
+                            >
+                                <div className="text-[10px] font-bold uppercase opacity-50 px-2 pb-1 border-b mb-1" style={{ borderColor: colors.border }}>
                                     Visibility
                                 </div>
-                                <button
-                                    onClick={() => onToggleWalls?.()}
-                                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/10 text-xs text-white"
-                                >
-                                    <div className={`w-3 h-3 rounded border ${showWalls ? 'bg-blue-500 border-blue-500' : 'border-gray-500'}`}>
-                                        {showWalls && <Check size={10} className="text-white" />}
-                                    </div>
-                                    <Pencil size={12} className="text-gray-400" />
-                                    Walls
-                                </button>
-                                <button
-                                    onClick={() => onToggleDoors?.()}
-                                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/10 text-xs text-white"
-                                >
-                                    <div className={`w-3 h-3 rounded border ${showDoors ? 'bg-blue-500 border-blue-500' : 'border-gray-500'}`}>
-                                        {showDoors && <Check size={10} className="text-white" />}
-                                    </div>
-                                    <DoorOpen size={12} className="text-gray-400" />
-                                    Doors
-                                </button>
-                                <button
-                                    onClick={() => onToggleWindows?.()}
-                                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/10 text-xs text-white"
-                                >
-                                    <div className={`w-3 h-3 rounded border ${showWindows ? 'bg-blue-500 border-blue-500' : 'border-gray-500'}`}>
-                                        {showWindows && <Check size={10} className="text-white" />}
-                                    </div>
-                                    <Grid3X3 size={12} className="text-gray-400" />
-                                    Windows
-                                </button>
-                                <button
-                                    onClick={() => onToggleRooms?.()}
-                                    className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-white/10 text-xs text-white"
-                                >
-                                    <div className={`w-3 h-3 rounded border ${showRooms ? 'bg-blue-500 border-blue-500' : 'border-gray-500'}`}>
-                                        {showRooms && <Check size={10} className="text-white" />}
-                                    </div>
-                                    <Square size={12} className="text-gray-400" />
-                                    Rooms
-                                </button>
+                                {([
+                                    { label: 'Walls', icon: <Pencil size={12} className="opacity-60" />, visible: showWalls, toggle: onToggleWalls },
+                                    { label: 'Doors', icon: <DoorOpen size={12} className="opacity-60" />, visible: showDoors, toggle: onToggleDoors },
+                                    { label: 'Windows', icon: <Grid3X3 size={12} className="opacity-60" />, visible: showWindows, toggle: onToggleWindows },
+                                    { label: 'Rooms', icon: <Square size={12} className="opacity-60" />, visible: showRooms, toggle: onToggleRooms }
+                                ]).map(layer => (
+                                    <button
+                                        key={layer.label}
+                                        onClick={() => layer.toggle?.()}
+                                        className="flex items-center gap-2 px-2 py-1.5 rounded text-xs transition-colors hover:bg-black/10 dark:hover:bg-white/10"
+                                    >
+                                        <div className={`grid h-3 w-3 place-items-center rounded border ${layer.visible ? 'border-blue-500 bg-blue-500' : 'border-current opacity-40'}`}>
+                                            {layer.visible && <Check size={10} className="text-white" />}
+                                        </div>
+                                        {layer.icon}
+                                        {layer.label}
+                                    </button>
+                                ))}
                             </div>
                         )}
                     </div>
@@ -367,6 +418,7 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                     <ToolButton
                         icon={<GitBranch size={16} />}
                         label="Connect Components"
+                        shortcut="C"
                         active={activeTool === 'connection'}
                         onClick={() => setActiveTool(activeTool === 'connection' ? 'select' : 'connection')}
                     />
@@ -376,6 +428,15 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                         active={showChat}
                         onClick={() => onToggleChat()}
                     />
+                    {onToggleAgent && (
+                        <ToolButton
+                            icon={<Sparkles size={16} className={showAgent ? 'fill-current' : ''} />}
+                            label="Design Agent — auto-place loads, size boards, build the SLD"
+                            active={showAgent}
+                            onClick={onToggleAgent}
+                            variant={showAgent ? 'success' : 'default'}
+                        />
+                    )}
                     {onAddText && (
                         <ToolButton
                             icon={<Type size={16} />}
@@ -383,6 +444,14 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                             shortcut="T"
                             active={isAddTextMode}
                             onClick={onAddText}
+                        />
+                    )}
+                    {onToggleInspector && (
+                        <ToolButton
+                            icon={<PanelRight size={16} />}
+                            label={showInspector ? 'Hide Properties' : 'Show Properties'}
+                            active={showInspector}
+                            onClick={onToggleInspector}
                         />
                     )}
                 </div>
@@ -414,12 +483,30 @@ export const LayoutToolbar: React.FC<LayoutToolbarProps> = ({
                     <ToolButton
                         icon={<RotateCcw size={16} />}
                         label="Reset to Original Scan"
-                        onClick={resetWallsToOriginal}
+                        onClick={() => {
+                            const plan = getCurrentFloorPlan();
+                            if (!plan?.originalWalls?.length) {
+                                onNotify?.('error', 'No original scan to restore — this plan was drawn by hand.');
+                                return;
+                            }
+                            resetWallsToOriginal();
+                            onNotify?.('success', `Restored ${plan.originalWalls.length} detected walls.`);
+                        }}
                     />
                     <ToolButton
                         icon={<Wand2 size={16} />}
                         label="Apply Smart Stitch"
-                        onClick={applySmartStitch}
+                        onClick={() => {
+                            const plan = getCurrentFloorPlan();
+                            if (!plan || plan.walls.length === 0) {
+                                onNotify?.('error', 'Nothing to stitch — draw or detect walls first.');
+                                return;
+                            }
+                            const before = plan.walls.length;
+                            applySmartStitch();
+                            const after = useLayoutStore.getState().getCurrentFloorPlan()?.walls.length ?? before;
+                            onNotify?.('success', `Smart stitch: ${before} walls → ${after}.`);
+                        }}
                     />
                     <ToolButton
                         icon={copied ? <Check size={16} /> : <Bug size={16} />}

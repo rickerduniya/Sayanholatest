@@ -1,19 +1,11 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+﻿import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { useStore } from '../store/useStore';
 import { useLayoutStore } from '../store/useLayoutStore';
 import { useTheme } from '../context/ThemeContext';
-import { chatService, ChatMessage, DiagramCallbacks } from '../services/ChatService';
-import { api } from '../services/api';
-import { CanvasItem, Connector, ItemData } from '../types';
-import { getItemDefinition, LOAD_ITEM_DEFAULTS, DefaultRulesEngine } from '../utils/DefaultRulesEngine';
-import { calculateGeometry } from '../utils/GeometryCalculator';
-import { updateItemVisuals } from '../utils/SvgUpdater';
-import { Send, X, Bot, User, Loader2, PlusCircle, Database, Cpu, Zap, ChevronDown, ChevronRight, Wrench, Paperclip, Camera, Trash2, Eye } from 'lucide-react';
-import { sortOptionStringsAsc } from '../utils/sortUtils';
-import { fetchProperties } from '../utils/api';
-import { createConnectorWithDefaults } from '../utils/ConnectorFactory';
-import { applyAutoArrange } from '../utils/AutoArrange';
+import { chatService, ChatMessage } from '../services/ChatService';
+import { useDiagramCallbacks } from '../hooks/useDiagramCallbacks';
+import { Send, X, Bot, User, Loader2, PlusCircle, Database, Cpu, Zap, ChevronDown, ChevronRight, Wrench, Paperclip, Eye } from 'lucide-react';
 
 
 export const ChatPanel = () => {
@@ -21,25 +13,6 @@ export const ChatPanel = () => {
         isChatOpen,
         toggleChat,
         sheets,
-        addItem,
-        addConnector,
-        deleteItem,
-        calculateNetwork,
-        activeSheetId,
-        setActiveSheet,
-        addSheet,
-        removeSheet,
-        renameSheet,
-        moveItems,
-        updateItemProperties,
-        updateItemTransform,
-        updateItemLock,
-        duplicateItem,
-        updateConnector,
-        takeSnapshot,
-        updateSheet,
-        undo,
-        redo,
         getCurrentSheet,
         selectedItemIds,
         selectedConnectorIndices,
@@ -56,7 +29,6 @@ export const ChatPanel = () => {
     const [expandedTools, setExpandedTools] = useState<Record<number, boolean>>({});
     const messagesEndRef = useRef<HTMLDivElement>(null);
     const textareaRef = useRef<HTMLTextAreaElement>(null);
-    const [availableItems, setAvailableItems] = useState<ItemData[]>([]);
 
     const [pendingImages, setPendingImages] = useState<string[]>([]);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -67,6 +39,8 @@ export const ChatPanel = () => {
         setToast({ message, type });
         setTimeout(() => setToast(null), 3000);
     }, []);
+
+    const { buildCallbacks } = useDiagramCallbacks(showToast);
 
     const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files.length > 0) {
@@ -158,326 +132,19 @@ export const ChatPanel = () => {
         }
     }, [selectedItemIds, selectedConnectorIndices, getCurrentSheet]);
 
-    // Fetch available items on mount
+    // Setup diagram callbacks for ChatService.
+    //
+    // The callback bundle is built by useDiagramCallbacks, shared with AgentPanel.
+    // It used to be defined inline here *and* duplicated in handleNewChat, so the
+    // two copies could drift and the agent could end up with a different tool
+    // surface from chat.
     useEffect(() => {
-        const fetchItems = async () => {
-            try {
-                const items = await api.getItems();
-                setAvailableItems(items);
-            } catch (e) {
-                console.error('Failed to fetch items for AI assistant', e);
-            }
-        };
-        fetchItems();
-    }, []);
+        if (!isChatOpen) return;
 
-
-
-    // Add item helper for AI
-    const addItemHelper = useCallback(async (itemName: string, position?: { x: number; y: number }, properties?: Record<string, any>): Promise<CanvasItem | null> => {
-        if (itemName === "Text") {
-            const newItem: CanvasItem = {
-                uniqueID: crypto.randomUUID(),
-                name: "Text",
-                position: position || { x: 300, y: 300 },
-                size: { width: 150, height: 50 },
-                connectionPoints: {},
-                properties: [{
-                    "Text": "New Text",
-                    "FontSize": "16",
-                    "FontFamily": "Arial",
-                    "Color": "default",
-                    "Align": "left",
-                    ...(properties || {})
-                }],
-                alternativeCompany1: '',
-                alternativeCompany2: '',
-                locked: false,
-                idPoints: {},
-                incomer: {},
-                outgoing: [],
-                accessories: []
-            };
-            addItem(newItem);
-            return newItem;
-        }
-
-        const itemData = availableItems.find(i =>
-            i.name.toLowerCase() === itemName.toLowerCase() ||
-            i.name.toLowerCase().includes(itemName.toLowerCase())
-        );
-
-        if (!itemData) {
-            console.error(`Item "${itemName}" not found in available items`);
-            return null;
-        }
-
-        const currentSheet = getCurrentSheet();
-        const scale = currentSheet?.scale || 1;
-
-        // Create new item
-        const newItem: CanvasItem = {
-            uniqueID: crypto.randomUUID(),
-            name: itemData.name,
-            position: position || { x: 300, y: 300 },
-            size: itemData.size,
-            connectionPoints: itemData.connectionPoints,
-            properties: [],
-            alternativeCompany1: '',
-            alternativeCompany2: '',
-            svgContent: undefined,
-            iconPath: itemData.iconPath,
-            locked: false,
-            idPoints: {},
-            incomer: {},
-            outgoing: [],
-            accessories: []
-        };
-
-        try {
-            // Fetch properties
-            const props = await api.getItemProperties(itemData.name, 1);
-            if (props?.properties && props.properties.length > 0) {
-                newItem.properties = [props.properties[0]];
-            } else if (LOAD_ITEM_DEFAULTS[newItem.name]) {
-                newItem.properties = [{ ...LOAD_ITEM_DEFAULTS[newItem.name] }];
-            }
-            newItem.alternativeCompany1 = props?.alternativeCompany1 || '';
-            newItem.alternativeCompany2 = props?.alternativeCompany2 || '';
-        } catch (err) {
-            console.error('Failed to load properties', err);
-            if (LOAD_ITEM_DEFAULTS[newItem.name]) {
-                newItem.properties = [{ ...LOAD_ITEM_DEFAULTS[newItem.name] }];
-            }
-        }
-
-        // Fetch SVG Content
-        if (itemData.iconPath) {
-            try {
-                const iconName = itemData.iconPath.split('/').pop();
-                const url = api.getIconUrl(iconName!);
-                const encodedUrl = encodeURI(url);
-                const response = await fetch(encodedUrl);
-                if (response.ok) {
-                    newItem.svgContent = await response.text();
-                }
-            } catch (e) {
-                console.error("Failed to fetch SVG content", e);
-            }
-        }
-
-        // Apply local definitions for static items
-        const staticDef = getItemDefinition(newItem.name);
-        if (staticDef && !["HTPN", "VTPN", "SPN DB"].includes(newItem.name)) {
-            newItem.size = staticDef.size;
-            newItem.connectionPoints = staticDef.connectionPoints;
-        }
-
-        // Initialize Distribution Boards and Switches
-        if (["HTPN", "VTPN", "SPN DB", "Main Switch", "Change Over Switch", "Point Switch Board"].includes(newItem.name)) {
-            if (!newItem.properties[0]) newItem.properties[0] = {};
-            let wayVal = newItem.properties[0]["Way"];
-            if (!wayVal || wayVal.includes(',')) {
-                if (newItem.name === "SPN DB") wayVal = "2+4";
-                else wayVal = "4";
-            }
-            newItem.properties[0]["Way"] = wayVal;
-
-            try {
-                const initData = await api.initializeItem(newItem.name, newItem.properties);
-                if (initData) {
-                    if (initData.incomer) newItem.incomer = initData.incomer;
-                    if (initData.outgoing) newItem.outgoing = initData.outgoing;
-                    if (initData.accessories) newItem.accessories = initData.accessories;
-                }
-            } catch (err) {
-                console.error(`[ChatPanel] Failed to initialize item accessories:`, err);
-            }
-
-            if (["HTPN", "VTPN", "SPN DB"].includes(newItem.name)) {
-                const threshold = DefaultRulesEngine.getDefaultOutgoingThreshold(newItem.name);
-                if (threshold > 0 && newItem.outgoing && newItem.outgoing.length > 0) {
-                    const parseRating = (s: string) => {
-                        const m = (s || '').toString().match(/(\d+(?:\.\d+)?)/);
-                        return m ? parseFloat(m[1]) : NaN;
-                    };
-
-                    let defaultRating = "";
-                    try {
-                        const pole = newItem.name === "VTPN" ? "TP" : "SP";
-                        const mcb = await fetchProperties("MCB");
-
-                        const allRatings = sortOptionStringsAsc(
-                            Array.from(new Set(
-                                (mcb.properties || [])
-                                    .map(p => p["Current Rating"])
-                                    .filter(Boolean)
-                            ))
-                        );
-
-                        const poleRatingsRaw = (mcb.properties || [])
-                            .filter(p => {
-                                const pPole = (p["Pole"] || "").toString();
-                                if (!pPole) return false;
-                                return pPole === pole || pPole.includes(pole);
-                            })
-                            .map(p => p["Current Rating"])
-                            .filter(Boolean);
-                        const poleRatings = sortOptionStringsAsc(Array.from(new Set(poleRatingsRaw)));
-                        const ratings = poleRatings.length > 0 ? poleRatings : allRatings;
-
-                        defaultRating = ratings.find(r => {
-                            const v = parseRating(r);
-                            return Number.isFinite(v) && v >= threshold;
-                        }) || ratings[0] || "";
-                    } catch (e) {
-                        console.error('[ChatPanel] Failed to fetch outgoing rating options for defaults', e);
-                    }
-
-                    if (defaultRating) {
-                        newItem.outgoing = newItem.outgoing.map(o => ({ ...(o || {}), "Current Rating": defaultRating }));
-                    }
-                }
-            }
-
-            const result = calculateGeometry(newItem);
-            if (result) {
-                newItem.size = result.size;
-                newItem.connectionPoints = result.connectionPoints;
-            }
-        }
-
-        // Update visuals if needed
-        if (newItem.svgContent && newItem.properties[0]) {
-            const updatedSvg = updateItemVisuals(newItem);
-            if (updatedSvg) {
-                newItem.svgContent = updatedSvg;
-            }
-        }
-
-        // Add item to canvas
-        addItem(newItem);
-        return newItem;
-    }, [availableItems, addItem, getCurrentSheet]);
-
-    const connectItemsHelper = useCallback(async (args: {
-        sourceItemId: string;
-        sourcePointKey: string;
-        targetItemId: string;
-        targetPointKey: string;
-        materialType?: 'Cable' | 'Wiring';
-    }): Promise<{ connector: Connector; connectorIndex: number } | { error: string }> => {
-        const currentSheet = getCurrentSheet();
-        if (!currentSheet) return { error: 'No active sheet.' };
-        if (!addConnector) return { error: 'Connector action not available.' };
-
-        const sourceItem = currentSheet.canvasItems.find(i => i.uniqueID === args.sourceItemId);
-        const targetItem = currentSheet.canvasItems.find(i => i.uniqueID === args.targetItemId);
-        if (!sourceItem || !targetItem) return { error: 'Source or target item not found on the active sheet.' };
-
-        if (!sourceItem.connectionPoints?.[args.sourcePointKey]) {
-            return { error: `Invalid sourcePointKey: ${args.sourcePointKey}` };
-        }
-        if (!targetItem.connectionPoints?.[args.targetPointKey]) {
-            return { error: `Invalid targetPointKey: ${args.targetPointKey}` };
-        }
-
-        const beforeCount = currentSheet.storedConnectors.length;
-        const result = await createConnectorWithDefaults({
-            activeSheet: currentSheet,
-            allSheets: sheets,
-            sourceItem,
-            sourcePointKey: args.sourcePointKey,
-            targetItem,
-            targetPointKey: args.targetPointKey,
-            materialType: args.materialType || 'Cable'
-        });
-
-        if (result.error) return { error: result.error };
-        if (!result.connector) return { error: 'Failed to create connector.' };
-
-        if (result.warnings && result.warnings.length > 0) {
-            showToast(result.warnings.join('\n'), 'info');
-        }
-
-        addConnector(result.connector);
-        const updated = useStore.getState().getCurrentSheet();
-        const created = updated?.storedConnectors[beforeCount];
-        if (!created) return { error: 'Connector was not added.' };
-        return { connector: created, connectorIndex: beforeCount };
-    }, [getCurrentSheet, addConnector, sheets, showToast]);
-
-    const autoLayoutActiveSheet = useCallback(() => {
-        const sheet = getCurrentSheet();
-        if (!sheet) return;
-        takeSnapshot();
-        const newItems = applyAutoArrange(sheet.canvasItems, sheet.storedConnectors);
-        updateSheet({ canvasItems: newItems });
-        calculateNetwork();
-    }, [getCurrentSheet, takeSnapshot, updateSheet, calculateNetwork]);
-
-    // Setup diagram callbacks for ChatService
-    useEffect(() => {
-        if (isChatOpen) {
-            const callbacks: DiagramCallbacks = {
-                addItem: addItemHelper,
-                deleteItem: (itemId: string) => deleteItem(itemId),
-                calculateNetwork: () => calculateNetwork(),
-                getSheets: () => sheets,
-                getCurrentSheet: () => getCurrentSheet(),
-                getActiveSheetId: () => activeSheetId,
-                setActiveSheet: (id: string) => setActiveSheet(id),
-                addSheet: (name?: string) => addSheet(name),
-                renameSheet: (id: string, name: string) => renameSheet(id, name),
-                removeSheet: (id: string) => removeSheet(id),
-                moveItems: (moves) => {
-                    if (!moves || moves.length === 0) return;
-                    takeSnapshot();
-                    moveItems(moves.map(m => ({ id: m.itemId, x: m.x, y: m.y })));
-                    calculateNetwork();
-                },
-                updateItemProperties: (id: string, props: Record<string, string>) => updateItemProperties(id, props),
-                updateItemTransform: (id: string, x: number, y: number, w: number, h: number, r: number) => updateItemTransform(id, x, y, w, h, r),
-                updateItemLock: (id: string, locked: boolean) => updateItemLock(id, locked),
-                updateItemFields: (id: string, updates: Partial<Pick<CanvasItem, 'incomer' | 'outgoing' | 'accessories' | 'alternativeCompany1' | 'alternativeCompany2'>>) => {
-                    const sheet = useStore.getState().getCurrentSheet();
-                    if (!sheet) return;
-                    takeSnapshot();
-                    const newItems = sheet.canvasItems.map(it => it.uniqueID === id ? { ...it, ...updates } : it);
-                    updateSheet({ canvasItems: newItems }, { recalcNetwork: false });
-                },
-                updateItemRaw: (id: string, updates: Partial<CanvasItem>, options?: { recalcNetwork?: boolean }) => {
-                    const sheet = useStore.getState().getCurrentSheet();
-                    if (!sheet) return;
-                    takeSnapshot();
-                    const newItems = sheet.canvasItems.map(it => it.uniqueID === id ? { ...it, ...updates } : it);
-                    updateSheet({ canvasItems: newItems }, { recalcNetwork: options?.recalcNetwork });
-                },
-                duplicateItem: (id: string) => duplicateItem(id),
-                connectItems: connectItemsHelper,
-                updateConnector: (index: number, updates: Partial<Connector>) => updateConnector(index, updates),
-                deleteConnector: (index: number) => {
-                    const sheet = useStore.getState().getCurrentSheet();
-                    if (!sheet) return;
-                    if (index < 0 || index >= sheet.storedConnectors.length) return;
-                    takeSnapshot();
-                    const filtered = sheet.storedConnectors.filter((_, i) => i !== index);
-                    updateSheet({ storedConnectors: filtered });
-                    calculateNetwork();
-                },
-                autoLayoutActiveSheet: autoLayoutActiveSheet,
-                listAvailableItems: () => availableItems.map(i => ({ name: i.name, connectionPointKeys: Object.keys(i.connectionPoints || {}) })),
-                undo: () => undo(),
-                redo: () => redo(),
-                showToast: showToast
-            };
-            chatService.setDiagramCallbacks(callbacks);
-            chatService.initializeContext(sheets);
-            // Load existing history (filtering out system messages)
-            const history = chatService.getHistory();
-            setMessages(history.filter((m: ChatMessage) => m.role !== 'system'));
-        }
-    }, [isChatOpen, sheets, addItemHelper, deleteItem, calculateNetwork, showToast, getCurrentSheet, activeSheetId, setActiveSheet, addSheet, renameSheet, removeSheet, moveItems, takeSnapshot, updateSheet, updateItemProperties, updateItemTransform, updateItemLock, duplicateItem, connectItemsHelper, updateConnector, autoLayoutActiveSheet, availableItems]);
+        chatService.setDiagramCallbacks(buildCallbacks());
+        chatService.initializeContext(sheets);
+        setMessages(chatService.getHistory().filter((m: ChatMessage) => m.role !== 'system'));
+    }, [isChatOpen, sheets, buildCallbacks]);
 
     const scrollToBottom = () => {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -544,60 +211,7 @@ export const ChatPanel = () => {
 
     const handleNewChat = () => {
         chatService.reset();
-        // Re-setup callbacks after reset
-        const callbacks: DiagramCallbacks = {
-            addItem: addItemHelper,
-            deleteItem: (itemId: string) => deleteItem(itemId),
-            calculateNetwork: () => calculateNetwork(),
-            getSheets: () => sheets,
-            getCurrentSheet: () => getCurrentSheet(),
-            getActiveSheetId: () => activeSheetId,
-            setActiveSheet: (id: string) => setActiveSheet(id),
-            addSheet: (name?: string) => addSheet(name),
-            renameSheet: (id: string, name: string) => renameSheet(id, name),
-            removeSheet: (id: string) => removeSheet(id),
-            moveItems: (moves) => {
-                if (!moves || moves.length === 0) return;
-                takeSnapshot();
-                moveItems(moves.map(m => ({ id: m.itemId, x: m.x, y: m.y })));
-                calculateNetwork();
-            },
-            updateItemProperties: (id: string, props: Record<string, string>) => updateItemProperties(id, props),
-            updateItemTransform: (id: string, x: number, y: number, w: number, h: number, r: number) => updateItemTransform(id, x, y, w, h, r),
-            updateItemLock: (id: string, locked: boolean) => updateItemLock(id, locked),
-            updateItemFields: (id: string, updates: Partial<Pick<CanvasItem, 'incomer' | 'outgoing' | 'accessories' | 'alternativeCompany1' | 'alternativeCompany2'>>) => {
-                const sheet = useStore.getState().getCurrentSheet();
-                if (!sheet) return;
-                takeSnapshot();
-                const newItems = sheet.canvasItems.map(it => it.uniqueID === id ? { ...it, ...updates } : it);
-                updateSheet({ canvasItems: newItems }, { recalcNetwork: false });
-            },
-            updateItemRaw: (id: string, updates: Partial<CanvasItem>, options?: { recalcNetwork?: boolean }) => {
-                const sheet = useStore.getState().getCurrentSheet();
-                if (!sheet) return;
-                takeSnapshot();
-                const newItems = sheet.canvasItems.map(it => it.uniqueID === id ? { ...it, ...updates } : it);
-                updateSheet({ canvasItems: newItems }, { recalcNetwork: options?.recalcNetwork });
-            },
-            duplicateItem: (id: string) => duplicateItem(id),
-            connectItems: connectItemsHelper,
-            updateConnector: (index: number, updates: Partial<Connector>) => updateConnector(index, updates),
-            deleteConnector: (index: number) => {
-                const sheet = useStore.getState().getCurrentSheet();
-                if (!sheet) return;
-                if (index < 0 || index >= sheet.storedConnectors.length) return;
-                takeSnapshot();
-                const filtered = sheet.storedConnectors.filter((_, i) => i !== index);
-                updateSheet({ storedConnectors: filtered });
-                calculateNetwork();
-            },
-            autoLayoutActiveSheet: autoLayoutActiveSheet,
-            listAvailableItems: () => availableItems.map(i => ({ name: i.name, connectionPointKeys: Object.keys(i.connectionPoints || {}) })),
-            undo: () => undo(),
-            redo: () => redo(),
-            showToast: showToast
-        };
-        chatService.setDiagramCallbacks(callbacks);
+        chatService.setDiagramCallbacks(buildCallbacks());
         chatService.initializeContext(sheets);
         setMessages([]);
         setIsDbMode(false);

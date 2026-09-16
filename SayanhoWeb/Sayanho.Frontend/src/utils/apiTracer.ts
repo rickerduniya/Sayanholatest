@@ -14,13 +14,70 @@ export interface ApiTraceEntry {
     error?: string;
 }
 
+/**
+ * Strip credentials before a trace is stored.
+ *
+ * The Network Monitor exists to be copied into a bug report, and it was
+ * recording bearer tokens and LLM API keys verbatim in request headers. Anyone
+ * pasting a trace log was publishing their session token and their provider key.
+ * Redaction happens on the way in, so no secret is ever held in memory by the
+ * tracer and "Copy" cannot leak one.
+ */
+const SENSITIVE_HEADERS = new Set([
+    'authorization',
+    'x-api-key',
+    'api-key',
+    'x-goog-api-key',
+    'openai-api-key',
+    'cookie',
+    'set-cookie',
+    'proxy-authorization'
+]);
+
+const maskSecret = (value: string): string => {
+    const v = (value || '').toString();
+    // Keep the scheme and a short tail so a reader can still tell two different
+    // tokens apart without being able to use either.
+    const bearer = v.match(/^(Bearer|Basic|Token)\s+(.*)$/i);
+    if (bearer) {
+        const secret = bearer[2] || '';
+        return `${bearer[1]} [redacted${secret.length > 4 ? `, …${secret.slice(-4)}` : ''}]`;
+    }
+    return `[redacted${v.length > 4 ? `, …${v.slice(-4)}` : ''}]`;
+};
+
+const redactHeaders = (headers?: Record<string, string>): Record<string, string> | undefined => {
+    if (!headers) return headers;
+
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(headers)) {
+        out[key] = SENSITIVE_HEADERS.has(key.toLowerCase())
+            ? maskSecret(value as unknown as string)
+            : (value as unknown as string);
+    }
+    return out;
+};
+
+/** Remove a key embedded in a query string, e.g. Gemini's ?key=… */
+const redactUrl = (url: string): string => {
+    if (!url) return url;
+    return url.replace(/([?&](?:key|api_key|apikey|access_token|token)=)[^&]+/gi, '$1[redacted]');
+};
+
+const redactTrace = (trace: ApiTraceEntry): ApiTraceEntry => ({
+    ...trace,
+    url: redactUrl(trace.url),
+    requestHeaders: redactHeaders(trace.requestHeaders),
+    responseHeaders: redactHeaders(trace.responseHeaders)
+});
+
 class ApiTracer {
     private traces: ApiTraceEntry[] = [];
     private maxTraces = 100; // Keep last 100 traces
     private listeners: (() => void)[] = [];
 
     addTrace(trace: ApiTraceEntry) {
-        this.traces.push(trace);
+        this.traces.push(redactTrace(trace));
         // Keep only the last maxTraces entries
         if (this.traces.length > this.maxTraces) {
             this.traces = this.traces.slice(-this.maxTraces);

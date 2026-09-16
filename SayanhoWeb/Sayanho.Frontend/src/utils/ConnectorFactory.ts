@@ -2,6 +2,7 @@ import type { CanvasItem, CanvasSheet, Connector } from '../types';
 import { api } from '../services/api';
 import { DefaultRulesEngine } from './DefaultRulesEngine';
 import { sortOptionStringsAsc } from './sortUtils';
+import { validateConnectionPhase } from './PhaseCompatibility';
 
 type MaterialType = 'Cable' | 'Wiring';
 
@@ -86,6 +87,16 @@ export async function createConnectorWithDefaults(args: {
 
     if (isPortal(sourceItem) && isPortal(targetItem)) {
         return { error: 'Connecting a portal to another portal is not allowed.' };
+    }
+
+    // Phase compatibility: a single-phase outgoing must not feed a 3-phase
+    // incomer (e.g. HTPN FP incomer needs a 3-phase feed), and a 3-phase
+    // outgoing must not feed a single-phase incomer. Per-point configuration
+    // (Busbar Phase, LT Panel Pole) is honoured so the same physical point
+    // can be single- or three-phase depending on user configuration.
+    const phaseCheck = validateConnectionPhase(sourceItem, sourcePointKey, targetItem, targetPointKey);
+    if (!phaseCheck.ok && phaseCheck.error) {
+        return { error: phaseCheck.error };
     }
 
     if (isPortal(sourceItem)) {

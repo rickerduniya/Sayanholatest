@@ -158,25 +158,110 @@ const updateDistributionBoardVisuals = (doc: Document, item: CanvasItem): boolea
     const svg = doc.documentElement;
     let width = 0;
 
-    // Calculate Width based on type
-    if (item.name === "HTPN") width = 56 * way * 3;
-    else if (item.name === "VTPN") width = 70 * way;
-    else if (item.name === "SPN DB") width = 60 * way;
+    // Calculate Width based on type (compact pitch mirrors GeometryCalculator:
+    // HTPN/SPN 44px, VTPN 52px per outgoing way. All three hug the board:
+    // lastSlot + 22, so the leaning diagonal tip keeps 4-6px to the border
+    // and ~10px to the edge on every Way size — no per-way dead space).
+    // SPN outgoing symbols sit SYM_SHIFT right of their slot with a 10px
+    // diagonal lean (HTPN/VTPN: no shift, 12px lean); labels stay.
+    const SPN_SYM_SHIFT = 5;
+    const SPN_LEAN = 10;
+    if (item.name === "HTPN") width = 40 + (way * 3 - 1) * 44 + 22;
+    else if (item.name === "VTPN") width = 40 + (way - 1) * 52 + 22;
+    else if (item.name === "SPN DB") width = 44 * way + 23;
+
+    // Compact vertical layout (SVG units): viewport 112, geometry height 136 —
+    // the same 170/140 vertical scale as before, so rendered text size is
+    // unchanged. Busbar 68->58, incoming block 38->30, outgoing origin
+    // 118->104. Top lead shortened (-37->-29) so it starts just inside the
+    // viewport top; incomer-to-busbar baseline gap 10->8px. Label font sizes
+    // are untouched; outgoing labels shift right (x -28) to clear the
+    // neighbouring tick/diagonal at the tighter pitch. Nameplate is two
+    // lines: "<Way>" over "<Device> DB" (VTPN: three lines, "DB" on its own).
+    const COMPACT_H = 112;
+    const BUSBAR_Y = 58;
+    const INCOMING_Y = 30;
+    const OUTGOING_Y = 104;
+    const NAMEPLATE_Y1 = 14;
+    const NAMEPLATE_Y2 = 28;
+    const NAMEPLATE_Y3 = 42;
+    // VTPN outgoing labels sit 4px left (-32): "OG10+" is wide enough to
+    // touch its own tick at -28 (HTPN/SPN labels stay at -28).
+    const VTPN_LABEL_X = -32;
 
     if (width > 0) {
         svg.setAttribute("width", width.toString());
+        svg.setAttribute("height", COMPACT_H.toString());
         modified = true;
     }
 
-    // Update Nameplate
+    // Update Nameplate (two lines: Way on line 1, device name on line 2;
+    // VTPN uses three lines: "<Way>" / "VTPN" / "DB").
+    // Idempotent: fixes old single-line SVGs (y=20, full text) on re-run.
     const nameplate = doc.querySelector("#nameplate");
     if (nameplate) {
-        let suffix = item.name;
-        let displayText = `${wayText} ${suffix}`;
-        if (item.name === "VTPN") displayText = `${way} Way VTPN DB`;
-        if (item.name === "HTPN") displayText = `${wayText} HTPN DB`;
-        if (item.name === "SPN DB") displayText = `${wayText} SPN DB`;
-        nameplate.textContent = displayText;
+        let line1 = wayText.trim();
+        let line2 = item.name;
+        let line3: string | null = null;
+        if (item.name === "VTPN") {
+            line1 = `${way} Way`;
+            line2 = "VTPN";
+            line3 = "DB";
+        } else if (item.name === "HTPN") {
+            line1 = `${way} Way`;
+            line2 = "HTPN DB";
+        } else if (item.name === "SPN DB") {
+            const m = wayText.match(/2\s*\+\s*(\d+)/);
+            line1 = m ? `2+${m[1]} Way` : (/way/i.test(wayText) ? wayText.trim() : `${wayText.trim()} Way`);
+            line2 = "SPN DB";
+        }
+        nameplate.setAttribute("x", "8");
+        nameplate.setAttribute("y", NAMEPLATE_Y1.toString());
+        nameplate.textContent = line1;
+
+        const ns = "http://www.w3.org/2000/svg";
+        let nameplate2 = doc.querySelector("#nameplate2");
+        if (!nameplate2) {
+            nameplate2 = doc.createElementNS(ns, "text");
+            nameplate2.setAttribute("id", "nameplate2");
+            // Mirror line-1 styling so font sizes stay untouched.
+            for (const attr of ["font-family", "font-size", "fill", "font-weight"]) {
+                const v = nameplate.getAttribute(attr);
+                if (v) nameplate2.setAttribute(attr, v);
+            }
+            if (!nameplate2.getAttribute("font-family")) nameplate2.setAttribute("font-family", "Arial");
+            if (!nameplate2.getAttribute("font-size")) nameplate2.setAttribute("font-size", "13");
+            if (!nameplate2.getAttribute("fill")) nameplate2.setAttribute("fill", "black");
+            if (!nameplate2.getAttribute("font-weight")) nameplate2.setAttribute("font-weight", "bold");
+            nameplate.parentNode?.insertBefore(nameplate2, nameplate.nextSibling);
+        }
+        nameplate2.setAttribute("x", "8");
+        nameplate2.setAttribute("y", NAMEPLATE_Y2.toString());
+        nameplate2.textContent = line2;
+
+        // Optional third line (VTPN "DB"); removed again on other board types
+        // so re-runs stay idempotent.
+        let nameplate3 = doc.querySelector("#nameplate3");
+        if (line3) {
+            if (!nameplate3) {
+                nameplate3 = doc.createElementNS(ns, "text");
+                nameplate3.setAttribute("id", "nameplate3");
+                for (const attr of ["font-family", "font-size", "fill", "font-weight"]) {
+                    const v = nameplate.getAttribute(attr);
+                    if (v) nameplate3.setAttribute(attr, v);
+                }
+                if (!nameplate3.getAttribute("font-family")) nameplate3.setAttribute("font-family", "Arial");
+                if (!nameplate3.getAttribute("font-size")) nameplate3.setAttribute("font-size", "13");
+                if (!nameplate3.getAttribute("fill")) nameplate3.setAttribute("fill", "black");
+                if (!nameplate3.getAttribute("font-weight")) nameplate3.setAttribute("font-weight", "bold");
+                nameplate2.parentNode?.insertBefore(nameplate3, nameplate2.nextSibling);
+            }
+            nameplate3.setAttribute("x", "8");
+            nameplate3.setAttribute("y", NAMEPLATE_Y3.toString());
+            nameplate3.textContent = line3;
+        } else if (nameplate3) {
+            nameplate3.parentNode?.removeChild(nameplate3);
+        }
         modified = true;
     } else {
         console.warn(`[SvgUpdater] Element '#nameplate' not found.`);
@@ -191,34 +276,49 @@ const updateDistributionBoardVisuals = (doc: Document, item: CanvasItem): boolea
         }
     }
 
-    // Update Border Width
+    // Update Border Width (all DBs hug the board with a constant margin —
+    // border right edge lands 4px past the last diagonal tip on every Way)
     const border = doc.querySelector("#border");
     if (border) {
-        let borderWidth = 0;
-        if (item.name === "HTPN") borderWidth = 56 * way * 0.99 * 3;
-        else if (item.name === "VTPN") borderWidth = 70 * way * 0.99;
-        else if (item.name === "SPN DB") borderWidth = 60 * way * 0.98;
+        const borderWidth = width - 8;
 
         border.setAttribute("width", borderWidth.toString());
+        border.setAttribute("height", (COMPACT_H - 3).toString());
         modified = true;
     }
 
-    // Update Incoming Group Position
+    // Update Incoming Group Position (top-to-busbar gap tightened 38->30;
+    // shorten the top lead so it starts just inside the viewport top, and
+    // shorten the tail below the busbar to keep a 2px overlap)
     const incoming = doc.querySelector("#incoming");
     if (incoming) {
-        incoming.setAttribute("transform", `translate(${width / 2}, 50)`);
+        incoming.setAttribute("transform", `translate(${width / 2}, ${INCOMING_Y})`);
+        modified = true;
+    }
+    const incomingLead = doc.querySelector("#line1");
+    if (incomingLead) {
+        incomingLead.setAttribute("y1", "-29");
+        modified = true;
+    }
+    const incomingTail = doc.querySelector("#line3");
+    if (incomingTail) {
+        incomingTail.setAttribute("y2", "30");
         modified = true;
     }
 
-    // Update Busbar Length
+    // Update Busbar Length + Height (busbar lifted 68->58 with the incomer;
+    // SPN end covers the right-shifted last symbol + 4)
     const busbar = doc.querySelector("#Busbar");
     if (busbar) {
         let endX = 0;
-        if (item.name === "HTPN") endX = (51 + (way - 1) * 55) * 3;
-        else if (item.name === "VTPN") endX = 52 + ((way - 1) * 65);
-        else if (item.name === "SPN DB") endX = 42 + ((way - 1) * 55);
+        if (item.name === "HTPN") endX = 40 + (way * 3 - 1) * 44 + 4;
+        else if (item.name === "VTPN") endX = 40 + ((way - 1) * 52) + 4;
+        else if (item.name === "SPN DB") endX = 40 + ((way - 1) * 44) + SPN_SYM_SHIFT + 4;
 
+        busbar.setAttribute("x1", "36");
         busbar.setAttribute("x2", endX.toString());
+        busbar.setAttribute("y1", BUSBAR_Y.toString());
+        busbar.setAttribute("y2", BUSBAR_Y.toString());
         modified = true;
     }
 
@@ -236,7 +336,7 @@ const updateDistributionBoardVisuals = (doc: Document, item: CanvasItem): boolea
                 for (let i = 1; i <= way; i++) {
                     const rating = item.outgoing[j]?.["Current Rating"] || "";
                     const newGroup = createOutgoingGroup(doc, `${phase}${i}`, rating);
-                    newGroup.setAttribute("transform", `translate(${40 + j * 55}, 130)`);
+                    newGroup.setAttribute("transform", `translate(${40 + j * 44}, ${OUTGOING_Y})`);
                     outgoingGroup.appendChild(newGroup);
                     j++;
                 }
@@ -244,15 +344,15 @@ const updateDistributionBoardVisuals = (doc: Document, item: CanvasItem): boolea
         } else if (item.name === "VTPN") {
             for (let i = 1; i <= way; i++) {
                 const rating = item.outgoing[i - 1]?.["Current Rating"] || "";
-                const newGroup = createOutgoingGroup(doc, `OG${i}`, rating, "TP");
-                newGroup.setAttribute("transform", `translate(${50 + (i - 1) * 65}, 130)`);
+                const newGroup = createOutgoingGroup(doc, `OG${i}`, rating, "TP", 0, 12, VTPN_LABEL_X);
+                newGroup.setAttribute("transform", `translate(${40 + (i - 1) * 52}, ${OUTGOING_Y})`);
                 outgoingGroup.appendChild(newGroup);
             }
         } else if (item.name === "SPN DB") {
             for (let i = 1; i <= way; i++) {
                 const rating = item.outgoing[i - 1]?.["Current Rating"] || "";
-                const newGroup = createOutgoingGroup(doc, `OG${i}`, rating, "SP");
-                newGroup.setAttribute("transform", `translate(${40 + (i - 1) * 55}, 130)`);
+                const newGroup = createOutgoingGroup(doc, `OG${i}`, rating, "SP", SPN_SYM_SHIFT, SPN_LEAN);
+                newGroup.setAttribute("transform", `translate(${40 + (i - 1) * 44}, ${OUTGOING_Y})`);
                 outgoingGroup.appendChild(newGroup);
             }
         }
@@ -264,35 +364,37 @@ const updateDistributionBoardVisuals = (doc: Document, item: CanvasItem): boolea
     return modified;
 };
 
-const createOutgoingGroup = (doc: Document, id: string, rating: string, pole: string = "SP"): SVGElement => {
+const createOutgoingGroup = (doc: Document, id: string, rating: string, pole: string = "SP", shiftX: number = 0, lean: number = 12, labelX: number = -28): SVGElement => {
     const ns = "http://www.w3.org/2000/svg";
     const group = doc.createElementNS(ns, "g");
     group.setAttribute("id", id);
 
-    // Lines
+    // Lines (top lead -45 keeps a 1px gap: OUTGOING_Y - 45 = BUSBAR_Y + 1.
+    // shiftX moves the symbol right; labels below stay put)
     const line1 = doc.createElementNS(ns, "line");
-    line1.setAttribute("x1", "0"); line1.setAttribute("y1", "-49");
-    line1.setAttribute("x2", "0"); line1.setAttribute("y2", "-20");
+    line1.setAttribute("x1", shiftX.toString()); line1.setAttribute("y1", "-45");
+    line1.setAttribute("x2", shiftX.toString()); line1.setAttribute("y2", "-20");
     line1.setAttribute("stroke", "black"); line1.setAttribute("stroke-width", "3");
     group.appendChild(line1);
 
     const line2 = doc.createElementNS(ns, "line");
-    line2.setAttribute("x1", "12"); line2.setAttribute("y1", "-18");
-    line2.setAttribute("x2", "0"); line2.setAttribute("y2", "0");
+    line2.setAttribute("x1", (lean + shiftX).toString()); line2.setAttribute("y1", "-18");
+    line2.setAttribute("x2", shiftX.toString()); line2.setAttribute("y2", "0");
     line2.setAttribute("stroke", "black"); line2.setAttribute("stroke-width", "3");
     group.appendChild(line2);
 
     const line3 = doc.createElementNS(ns, "line");
-    line3.setAttribute("x1", "0"); line3.setAttribute("y1", "-2");
-    line3.setAttribute("x2", "0"); line3.setAttribute("y2", "32");
+    line3.setAttribute("x1", shiftX.toString()); line3.setAttribute("y1", "-2");
+    line3.setAttribute("x2", shiftX.toString()); line3.setAttribute("y2", "32");
     line3.setAttribute("stroke", "black"); line3.setAttribute("stroke-width", "3");
     group.appendChild(line3);
 
-    // Texts
+    // Texts (font sizes unchanged; labelX clears the previous tick/diagonal
+    // at the compact 44/52px pitch without touching its own tick)
     const createText = (text: string, y: string) => {
         const t = doc.createElementNS(ns, "text");
         t.textContent = text;
-        t.setAttribute("x", "-35");
+        t.setAttribute("x", labelX.toString());
         t.setAttribute("y", y);
         t.setAttribute("font-size", "11"); // Or 12 based on C#
         t.setAttribute("font-family", "Arial");

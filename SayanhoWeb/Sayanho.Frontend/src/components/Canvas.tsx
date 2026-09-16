@@ -26,20 +26,46 @@ import { sortOptionStringsAsc } from '../utils/sortUtils';
 import { fetchProperties } from '../utils/api';
 import { createConnectorWithDefaults } from '../utils/ConnectorFactory';
 import { LayoutConnectionPreview } from './LayoutConnectionPreview';
+import { parseHtpnPointPhase, resolveUpstreamPhase, getLocalOutgoingPhase } from '../utils/NetworkAnalyzer';
 
-const getPhaseColor = (connector: Connector, theme: string): string => {
+const PHASE_COLORS: Record<string, string> = {
+    R: '#FF4500', // OrangeRed
+    Y: '#FFD700', // Gold
+    B: '#0000CD', // MediumBlue
+};
+
+const getPhaseColor = (connector: Connector, theme: string, allConnectors?: Connector[], allItems?: CanvasItem[]): string => {
     const useColor = ApplicationSettings.getSaveImageInColor();
     if (!useColor) return theme === 'dark' ? '#FFFFFF' : '#000000';
 
     if (connector.currentValues && connector.currentValues["Phase"]) {
         const phase = connector.currentValues["Phase"];
-        if (phase === "R") return '#FF4500'; // OrangeRed
-        if (phase === "Y") return '#FFD700'; // Gold
-        if (phase === "B") return '#0000CD'; // MediumBlue
+        if (PHASE_COLORS[phase]) return PHASE_COLORS[phase];
     }
 
-    // Fallback logic mirroring C#
+    // Stored phase properties win even when no Source feeds the network: any
+    // single-phase outgoing (HTPN ways, Busbar taps, LT panel feeders, SPN DBs,
+    // single-phase switches) — or anything inheriting from one — already knows
+    // its phase.
+    if (allConnectors && allConnectors.length > 0) {
+        const resolved = resolveUpstreamPhase(connector, allConnectors, allItems);
+        if (PHASE_COLORS[resolved]) return PHASE_COLORS[resolved];
+    }
+
+    // Immediate-neighbour fallback mirroring C#, generalized beyond HTPN to
+    // every device with possible single-phase outgoing.
+    const freshSource = (allItems && connector.sourceItem?.uniqueID)
+        ? allItems.find(i => i.uniqueID === connector.sourceItem.uniqueID) || connector.sourceItem
+        : connector.sourceItem;
+    const local = getLocalOutgoingPhase(connector, freshSource);
+    if (local && PHASE_COLORS[local]) return PHASE_COLORS[local];
+
+    // Legacy safety net for HTPN point keys.
     if (connector.sourceItem.name === "HTPN" || connector.targetItem.name === "HTPN") {
+        const pointPhase = parseHtpnPointPhase(connector.sourcePointKey) || parseHtpnPointPhase(connector.targetPointKey);
+        if (pointPhase === "R") return '#FF0000';
+        if (pointPhase === "Y") return '#FFD700';
+        if (pointPhase === "B") return '#0000FF';
         if (connector.sourcePointKey.includes("R") || connector.targetPointKey.includes("R")) return '#FF0000';
         if (connector.sourcePointKey.includes("Y") || connector.targetPointKey.includes("Y")) return '#FFD700';
         if (connector.sourcePointKey.includes("B") || connector.targetPointKey.includes("B")) return '#0000FF';
@@ -1491,7 +1517,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                                 {/* Visible Line */}
                                 <Line
                                     points={pts}
-                                    stroke={selectedConnectorIndices.includes(i) ? "#2563eb" : getPhaseColor(pathData.connector, theme)}
+                                    stroke={selectedConnectorIndices.includes(i) ? "#2563eb" : getPhaseColor(pathData.connector, theme, currentSheet?.storedConnectors, currentSheet?.canvasItems)}
                                     strokeWidth={selectedConnectorIndices.includes(i) ? 3 : 2}
                                     lineJoin="round"
                                     lineCap="round"
@@ -1515,7 +1541,7 @@ export const Canvas = forwardRef<CanvasRef, CanvasProps>((props, ref) => {
                                         const dirY = dy / dist;
 
                                         const arrowPts = calculateArrowPoints({ x: midX, y: midY }, dirX, dirY, scale);
-                                        const arrowColor = getPhaseColor(pathData.connector, theme);
+                                        const arrowColor = getPhaseColor(pathData.connector, theme, currentSheet?.storedConnectors, currentSheet?.canvasItems);
 
                                         return (
                                             <Line

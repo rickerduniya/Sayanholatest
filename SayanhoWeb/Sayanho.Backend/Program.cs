@@ -138,8 +138,27 @@ if (Directory.Exists(externalIconsPath))
 
 app.UseAuthorization();
 
-// Health check endpoint for Render
-app.MapGet("/", () => Results.Ok(new { status = "healthy", service = "Sayanho Backend API" }));
+// Health check endpoints.
+// "/" is used by Render's platform health probe.
+// "/api/health" and "/health" are used by the frontend wake-up / keep-alive service.
+// These must stay cheap: no database access, no allocation-heavy work, so they can be
+// polled every few minutes without adding load.
+var startedAtUtc = DateTime.UtcNow;
+
+IResult BuildHealthPayload() => Results.Ok(new
+{
+    status = "healthy",
+    service = "Sayanho Backend API",
+    serverTimeUtc = DateTime.UtcNow,
+    uptimeSeconds = (long)(DateTime.UtcNow - startedAtUtc).TotalSeconds
+});
+
+app.MapGet("/", BuildHealthPayload);
+app.MapGet("/health", BuildHealthPayload);
+app.MapGet("/api/health", BuildHealthPayload);
+
+// Some hosts and proxies send HEAD for uptime probes. Answer them without a body.
+app.MapMethods("/api/health", new[] { "HEAD" }, () => Results.Ok());
 
 app.MapControllers();
 

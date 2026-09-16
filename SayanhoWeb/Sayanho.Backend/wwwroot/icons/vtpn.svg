@@ -1,12 +1,18 @@
-<svg width="320" height="160" xmlns="http://www.w3.org/2000/svg">
-  <rect id="border" x="2" y="2" width="640" height="157" fill="none" stroke="black" stroke-width="1" />
-  <text id="nameplate" x="8" y="20" font-family="Arial" font-size="15" fill="black" font-weight="bold">
-     Way VTPN DB
+<svg width="218" height="112" xmlns="http://www.w3.org/2000/svg">
+  <rect id="border" x="2" y="2" width="210" height="109" fill="none" stroke="black" stroke-width="1" />
+  <text id="nameplate" x="8" y="14" font-family="Arial" font-size="13" fill="black" font-weight="bold">
+     4 Way
   </text>
-  <g id="incoming" transform="translate(160, 50)">
-    <line id="line1" x1="0" y1="-49" x2="0" y2="-20" stroke="black" stroke-width="3" />
+  <text id="nameplate2" x="8" y="28" font-family="Arial" font-size="13" fill="black" font-weight="bold">
+     VTPN
+  </text>
+  <text id="nameplate3" x="8" y="42" font-family="Arial" font-size="13" fill="black" font-weight="bold">
+     DB
+  </text>
+  <g id="incoming" transform="translate(109, 30)">
+    <line id="line1" x1="0" y1="-29" x2="0" y2="-20" stroke="black" stroke-width="3" />
     <line id="line2" x1="12" y1="-18" x2="0" y2="0" stroke="black" stroke-width="3" />
-    <line id="line3" x1="0" y1="-2" x2="0" y2="32" stroke="black" stroke-width="3" />
+    <line id="line3" x1="0" y1="-2" x2="0" y2="30" stroke="black" stroke-width="3" />
     <text id="incomingtext1" x="-40" y="-10" font-family="Arial" font-size="12" fill="black">
       125A
     </text>
@@ -17,7 +23,7 @@
       MCCB
     </text>
   </g>
-  <line id="Busbar" x1="48" y1="80" x2="292" y2="80" stroke="black" stroke-width="5" />
+  <line id="Busbar" x1="36" y1="58" x2="200" y2="58" stroke="black" stroke-width="5" />
   <g id="outgoing-group">
 
   </g>

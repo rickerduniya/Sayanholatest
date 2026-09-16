@@ -14,7 +14,7 @@ export function useLayoutComponentImages() {
             const loadedImages: Record<string, HTMLImageElement> = {};
             const promises: Promise<void>[] = [];
             // Cache-bust so browsers always load fresh SVGs after updates
-            const v = '2';
+            const v = '6';
 
             Object.values(LAYOUT_COMPONENT_DEFINITIONS).forEach(def => {
                 if (!def.svgIcon) return;

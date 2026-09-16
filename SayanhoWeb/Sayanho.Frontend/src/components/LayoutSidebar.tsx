@@ -11,7 +11,17 @@ import {
     getSortedCategories
 } from '../utils/LayoutComponentDefinitions';
 import { LayoutComponentType, LayoutComponentDef } from '../types/layout';
-import { ChevronDown, ChevronRight, Search, Zap, Info } from 'lucide-react';
+import { api } from '../services/api';
+import { ChevronDown, ChevronRight, Search, Zap, Info, X } from 'lucide-react';
+
+/**
+ * Resolve the palette icon URL for a component definition.
+ *
+ * Same source the canvas uses (`api.getIconUrl`), so the sidebar preview and the
+ * placed symbol cannot drift apart.
+ */
+const componentIconUrl = (def: LayoutComponentDef): string | null =>
+    def.svgIcon ? api.getIconUrl(def.svgIcon) : null;
 
 export const LayoutSidebar: React.FC = () => {
     const { theme, colors } = useTheme();
@@ -86,6 +96,7 @@ export const LayoutSidebar: React.FC = () => {
         const selected = isSelected(def.type);
         const count = componentCounts[def.type] || 0;
         const isHovered = hoveredComponent === def.type;
+        const iconUrl = componentIconUrl(def);
 
         return (
             <button
@@ -93,27 +104,54 @@ export const LayoutSidebar: React.FC = () => {
                 onClick={() => handleComponentClick(def.type)}
                 onMouseEnter={() => setHoveredComponent(def.type)}
                 onMouseLeave={() => setHoveredComponent(null)}
+                // Library items are now draggable as well as clickable. Drag was
+                // previously only wired up on the "Unplaced" tab, so the two
+                // halves of the same sidebar behaved differently.
+                draggable
+                onDragStart={(e) => {
+                    e.dataTransfer.setData('application/json', JSON.stringify({
+                        _isLibraryComponent: true,
+                        type: def.type
+                    }));
+                    e.dataTransfer.effectAllowed = 'copy';
+                }}
                 className={`
                     w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-xs
-                    transition-all duration-150 group relative
+                    transition-all duration-150 group relative cursor-grab active:cursor-grabbing
                     ${selected
                         ? 'bg-blue-500 text-white shadow-md'
                         : 'hover:bg-white/10'
                     }
                 `}
                 style={selected ? {} : { color: colors.text }}
-                title={def.description}
+                title={`${def.description || def.name} — click then click canvas, or drag here`}
             >
-                {/* Symbol */}
+                {/* Symbol. Uses the same SVG the canvas renders where available,
+                    so the palette matches what actually gets placed instead of a
+                    loosely-related unicode glyph. */}
                 <span
-                    className="w-7 h-7 flex items-center justify-center rounded text-sm font-mono shrink-0"
+                    className="w-7 h-7 flex items-center justify-center rounded text-sm font-mono shrink-0 overflow-hidden"
                     style={{
                         backgroundColor: selected
                             ? 'rgba(255,255,255,0.2)'
                             : (theme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.08)')
                     }}
                 >
-                    {def.symbol}
+                    {iconUrl ? (
+                        <img
+                            src={iconUrl}
+                            alt=""
+                            aria-hidden
+                            className="h-5 w-5 object-contain"
+                            style={{ filter: theme === 'dark' ? 'invert(1) brightness(1.6)' : undefined }}
+                            // Fall back to the unicode symbol if the icon is
+                            // missing or the backend is still waking up.
+                            onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                            draggable={false}
+                        />
+                    ) : (
+                        def.symbol
+                    )}
                 </span>
 
                 {/* Name */}
@@ -187,6 +225,31 @@ export const LayoutSidebar: React.FC = () => {
                 </div>
             </div>
 
+            {/* Active placement banner.
+                Clicking a palette item silently arms placement mode; with no
+                indicator here, users clicked an item, saw nothing happen, and
+                clicked another — then every canvas click dropped a symbol they
+                did not expect. */}
+            {drawingState.activeTool === 'component' && drawingState.selectedComponentType && (
+                <div className="mx-2 mt-2 flex items-center gap-2 rounded-lg bg-blue-500/15 px-2 py-1.5 text-[11px]" style={{ color: colors.text }}>
+                    <span className="min-w-0 flex-1 truncate">
+                        Placing <strong>{LAYOUT_COMPONENT_DEFINITIONS[drawingState.selectedComponentType]?.name}</strong> — click the canvas
+                    </span>
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setActiveTool('select');
+                            setSelectedComponentType(undefined);
+                        }}
+                        className="shrink-0 rounded p-0.5 transition-colors hover:bg-black/10 dark:hover:bg-white/10"
+                        title="Stop placing (Esc)"
+                        aria-label="Stop placing"
+                    >
+                        <X size={12} />
+                    </button>
+                </div>
+            )}
+
             {/* Tabs */}
             <div className="flex p-1 mx-2 mt-2 rounded-lg bg-gray-100 dark:bg-white/5 space-x-1">
                 <button
@@ -231,9 +294,26 @@ export const LayoutSidebar: React.FC = () => {
                         placeholder="Search components..."
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
-                        className="w-full pl-8 pr-3 py-1.5 text-xs rounded-md bg-white/50 dark:bg-black/20 border border-white/20 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                        onKeyDown={(e) => {
+                            if (e.key === 'Escape') {
+                                setSearchQuery('');
+                                (e.target as HTMLInputElement).blur();
+                            }
+                        }}
+                        className="w-full pl-8 pr-7 py-1.5 text-xs rounded-md bg-white/50 dark:bg-black/20 border border-white/20 dark:border-white/10 focus:outline-none focus:ring-1 focus:ring-blue-500"
                         style={{ color: colors.text }}
                     />
+                    {searchQuery && (
+                        <button
+                            type="button"
+                            onClick={() => setSearchQuery('')}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 rounded p-0.5 opacity-50 transition-opacity hover:opacity-100"
+                            style={{ color: colors.text }}
+                            aria-label="Clear search"
+                        >
+                            <X size={12} />
+                        </button>
+                    )}
                 </div>
             </div>
 
@@ -315,6 +395,7 @@ export const LayoutSidebar: React.FC = () => {
                         ) : (
                             visibleStagingComponents.map(comp => {
                                 const def = LAYOUT_COMPONENT_DEFINITIONS[comp.type];
+                                const iconUrl = def ? componentIconUrl(def) : null;
                                 return (
                                     <div
                                         key={comp.id}
@@ -328,8 +409,18 @@ export const LayoutSidebar: React.FC = () => {
                                             e.dataTransfer.effectAllowed = 'move';
                                         }}
                                     >
-                                        <div className="w-8 h-8 rounded bg-white/10 flex items-center justify-center text-sm font-mono" style={{ color: colors.text }}>
-                                            {def?.symbol || '?'}
+                                        <div className="w-8 h-8 rounded bg-white/10 flex items-center justify-center overflow-hidden text-sm font-mono" style={{ color: colors.text }}>
+                                            {iconUrl ? (
+                                                <img
+                                                    src={iconUrl}
+                                                    alt=""
+                                                    aria-hidden
+                                                    className="h-5 w-5 object-contain"
+                                                    style={{ filter: theme === 'dark' ? 'invert(1) brightness(1.6)' : undefined }}
+                                                    onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
+                                                    draggable={false}
+                                                />
+                                            ) : (def?.symbol || '?')}
                                         </div>
                                         <div className="flex-1 min-w-0">
                                             <div className="text-xs font-medium truncate" style={{ color: colors.text }}>
@@ -365,7 +456,7 @@ export const LayoutSidebar: React.FC = () => {
                 )}
                 <div className="flex items-center gap-1 opacity-40">
                     <Info size={10} />
-                    <span>Click component, then click canvas</span>
+                    <span>Click then click canvas, or drag</span>
                 </div>
             </div>
         </div>

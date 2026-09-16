@@ -1,18 +1,24 @@
 import { FormEvent, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { useServerStatus } from '../hooks/useServerStatus';
 import './AuthPage.css';
 
 const AuthPage = () => {
     const { login, register } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
+    const { status: serverStatus } = useServerStatus();
     const [isRegistering, setIsRegistering] = useState(location.state?.mode === 'register');
     const [displayName, setDisplayName] = useState('');
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [error, setError] = useState<string | null>(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+
+    // Sign-in is the first request that actually blocks the user, so warn when
+    // the backend is still booting rather than letting the button hang silently.
+    const serverIsWaking = serverStatus === 'waking';
 
     const handleSubmit = async (event: FormEvent) => {
         event.preventDefault();
@@ -60,8 +66,17 @@ const AuthPage = () => {
                         <input type="password" value={password} onChange={event => setPassword(event.target.value)} autoComplete={isRegistering ? 'new-password' : 'current-password'} minLength={12} required />
                     </label>
                     {isRegistering && <span className="auth-hint">Use at least 12 characters.</span>}
+                    {serverIsWaking && (
+                        <p className="auth-notice" role="status">
+                            Waking up the server… sign-in may take up to 30 seconds the first time.
+                        </p>
+                    )}
                     {error && <p className="auth-error" role="alert">{error}</p>}
-                    <button type="submit" disabled={isSubmitting}>{isSubmitting ? 'Please wait…' : isRegistering ? 'Create account' : 'Sign in'}</button>
+                    <button type="submit" disabled={isSubmitting}>
+                        {isSubmitting
+                            ? (serverIsWaking ? 'Waking up server…' : 'Please wait…')
+                            : isRegistering ? 'Create account' : 'Sign in'}
+                    </button>
                 </form>
 
                 <button className="auth-switch" type="button" onClick={toggleMode}>

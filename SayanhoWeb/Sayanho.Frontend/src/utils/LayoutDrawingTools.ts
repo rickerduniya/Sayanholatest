@@ -65,6 +65,58 @@ export function snapToWall(point: Point, walls: Wall[], snapDistance: number = 1
 }
 
 /**
+ * Snap a point to the nearest wall endpoint.
+ *
+ * Distinct from snapToWall, which snaps to anywhere along a wall's length. When
+ * drafting, joining a new wall exactly to an existing corner matters far more
+ * than landing somewhere on its face, otherwise the plan ends up full of
+ * near-miss junctions that break room detection.
+ */
+export function snapToWallEndpoint(
+    point: Point,
+    walls: Wall[],
+    snapDistance: number = 14
+): { point: Point; wall: Wall } | null {
+    let best: { point: Point; wall: Wall } | null = null;
+    let minDistance = snapDistance;
+
+    for (const wall of walls) {
+        for (const candidate of [wall.startPoint, wall.endPoint]) {
+            const dist = Math.hypot(candidate.x - point.x, candidate.y - point.y);
+            if (dist < minDistance) {
+                minDistance = dist;
+                best = { point: { x: candidate.x, y: candidate.y }, wall };
+            }
+        }
+    }
+
+    return best;
+}
+
+/**
+ * Resolve the best snap target for a drafting cursor, in priority order:
+ *   1. an existing wall endpoint (exact corner join)
+ *   2. a point along an existing wall (T-junction)
+ *
+ * The returned `type` lets the canvas draw a different indicator per snap kind,
+ * so the user can tell what they are about to connect to before clicking.
+ */
+export function resolveDraftingSnap(
+    point: Point,
+    walls: Wall[],
+    endpointTolerance: number = 14,
+    wallTolerance: number = 10
+): { point: Point; type: 'endpoint' | 'wall' } | null {
+    const endpoint = snapToWallEndpoint(point, walls, endpointTolerance);
+    if (endpoint) return { point: endpoint.point, type: 'endpoint' };
+
+    const onWall = snapToWall(point, walls, wallTolerance);
+    if (onWall) return { point: onWall.snapPoint, type: 'wall' };
+
+    return null;
+}
+
+/**
  * Find intersection point between two wall segments (if any)
  */
 export function findWallIntersection(wall1: Wall, wall2: Wall): Point | null {
@@ -290,19 +342,90 @@ export const DRAWING_TOOL_CURSORS: Record<DrawingTool, string> = {
 };
 
 export const DRAWING_TOOL_INSTRUCTIONS: Record<DrawingTool, string> = {
-    select: 'Click to select elements, drag to move',
-    pan: 'Drag to pan the canvas',
-    wall: 'Click start point, then click end point to draw wall',
-    room: 'Click corners to define room polygon, double-click to close',
-    door: 'Click on a wall to place a door',
-    window: 'Click on a wall to place a window',
+    select: 'Click to select · drag empty space to box-select · Shift+click to add',
+    pan: 'Drag to pan · hold Space from any tool',
+    wall: 'Click start, then click end · Shift constrains to 45° · Esc cancels',
+    room: 'Click each corner · double-click or Enter to close · Esc cancels',
+    door: 'Click a wall to place a door',
+    window: 'Click a wall to place a window',
     stair: 'Click corners to define stair area',
-    component: 'Click to place component',
-    connection: 'Click source, then click target to connect',
+    component: 'Click to place · snaps to nearby walls · Esc to stop placing',
+    connection: 'Click a Point Switch Board, then click a load',
     erase: 'Click elements to delete them',
-    pick: 'Click to pick properties from element',
-    calibrate: 'Draw a line of known length to calibrate scale'
+    pick: 'Click a wall to copy its thickness',
+    calibrate: 'Draw a line over a known distance, then enter its real length'
 };
+
+// ============================================================================
+// Bounding boxes & box-selection hit testing
+// ============================================================================
+
+export interface Bounds {
+    x1: number;
+    y1: number;
+    x2: number;
+    y2: number;
+}
+
+/** Normalize two arbitrary corner points into an ordered bounding box. */
+export function normalizeBounds(a: Point, b: Point): Bounds {
+    return {
+        x1: Math.min(a.x, b.x),
+        y1: Math.min(a.y, b.y),
+        x2: Math.max(a.x, b.x),
+        y2: Math.max(a.y, b.y)
+    };
+}
+
+export function boundsArea(bounds: Bounds): number {
+    return Math.abs(bounds.x2 - bounds.x1) * Math.abs(bounds.y2 - bounds.y1);
+}
+
+export function pointInBounds(point: Point, bounds: Bounds): boolean {
+    return point.x >= bounds.x1 && point.x <= bounds.x2 &&
+        point.y >= bounds.y1 && point.y <= bounds.y2;
+}
+
+/**
+ * Do two boxes overlap at all?
+ *
+ * Used for "touch" style rubber-band selection: an element is picked if the
+ * marquee touches it, rather than requiring full containment. Touch selection
+ * is far less fiddly on a dense floor plan where fully enclosing a long wall
+ * would mean dragging across the whole drawing.
+ */
+export function boundsIntersect(a: Bounds, b: Bounds): boolean {
+    return a.x1 <= b.x2 && a.x2 >= b.x1 && a.y1 <= b.y2 && a.y2 >= b.y1;
+}
+
+export function boundsFromPoints(points: Point[]): Bounds | null {
+    if (points.length === 0) return null;
+
+    let x1 = points[0].x;
+    let y1 = points[0].y;
+    let x2 = points[0].x;
+    let y2 = points[0].y;
+
+    for (const p of points) {
+        if (p.x < x1) x1 = p.x;
+        if (p.y < y1) y1 = p.y;
+        if (p.x > x2) x2 = p.x;
+        if (p.y > y2) y2 = p.y;
+    }
+
+    return { x1, y1, x2, y2 };
+}
+
+/** Bounding box around a point, expanded by a half-extent in each axis. */
+export function boundsAroundPoint(point: Point, halfWidth: number, halfHeight: number): Bounds {
+    return {
+        x1: point.x - halfWidth,
+        y1: point.y - halfHeight,
+        x2: point.x + halfWidth,
+        y2: point.y + halfHeight
+    };
+}
+
 
 // ============================================================================
 // UUID Generation

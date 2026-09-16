@@ -4,6 +4,7 @@ import { NetworkAnalyzer } from '../utils/NetworkAnalyzer';
 import { getItemDefinition } from '../utils/DefaultRulesEngine';
 import { LOAD_ITEM_DEFAULTS } from '../utils/DefaultRulesEngine';
 import { ConnectorUtils } from '../utils/ConnectorUtils';
+import { findIncompatibleConnectorsForItem, validateConnectionPhase } from '../utils/PhaseCompatibility';
 import { useLayoutStore } from './useLayoutStore';
 
 interface StoreState {
@@ -534,6 +535,29 @@ export const useStore = create<StoreState>((set, get) => ({
     },
 
     updateItemProperties: (id, properties) => {
+        // Phase guard: a property change (Source Type, switch Voltage, Busbar
+        // Bars, ...) must not silently invalidate existing wiring.
+        try {
+            const st = get();
+            const sheet = st.sheets.find(s => s.sheetId === st.activeSheetId);
+            const current = sheet?.canvasItems.find(i => i.uniqueID === id);
+            if (sheet && current) {
+                const preview: CanvasItem = {
+                    ...current,
+                    properties: [{ ...(current.properties?.[0] || {}), ...properties }]
+                };
+                const issues = findIncompatibleConnectorsForItem(
+                    preview,
+                    sheet.storedConnectors,
+                    sheet.canvasItems.map(ci => ci.uniqueID === id ? preview : ci)
+                );
+                if (issues.length > 0) {
+                    console.warn('[PHASE] Blocked property change that would invalidate wiring:', issues.map(i => i.error));
+                    alert(`Cannot apply this change. It would make ${issues.length} existing connection(s) phase-incompatible (single-phase vs 3-phase).\n\n${issues.slice(0, 3).map(i => `• ${i.error}`).join('\n')}\n\nDelete or rewire those connections first.`);
+                    return;
+                }
+            }
+        } catch { /* guard must never break property updates on internal error */ }
         get().takeSnapshot();
         set((state) => ({
             sheets: state.sheets.map(s => s.sheetId === state.activeSheetId ? {
@@ -865,6 +889,19 @@ export const useStore = create<StoreState>((set, get) => ({
             });
             return;
         }
+
+        // Final phase gate (defense-in-depth; the factory already validates).
+        // Uses fresh items from the target sheet so stale snapshots can't bypass it.
+        try {
+            const freshSrc = targetSheet.canvasItems.find(i => i.uniqueID === finalConnector.sourceItem?.uniqueID) || finalConnector.sourceItem;
+            const freshDst = targetSheet.canvasItems.find(i => i.uniqueID === finalConnector.targetItem?.uniqueID) || finalConnector.targetItem;
+            const phaseCheck = validateConnectionPhase(freshSrc, finalConnector.sourcePointKey, freshDst, finalConnector.targetPointKey);
+            if (!phaseCheck.ok) {
+                console.warn('[CONNECT] Dropped phase-incompatible connector.', phaseCheck.error);
+                alert(phaseCheck.error);
+                return;
+            }
+        } catch { /* gate must never break connector creation on internal error */ }
 
         set((state) => ({
             sheets: state.sheets.map(s => s.sheetId === targetSheetId ? {

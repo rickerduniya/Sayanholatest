@@ -21,7 +21,7 @@ interface UploadPlanDialogProps {
 
 export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onClose }) => {
     const { colors, theme } = useTheme();
-    const { addFloorPlan, updateFloorPlan, getCurrentFloorPlan, setApiDebugData } = useLayoutStore();
+    const { addFloorPlan, updateFloorPlan, getCurrentFloorPlan, setApiDebugData, floorPlans } = useLayoutStore();
 
     const fileInputRef = useRef<HTMLInputElement>(null);
     const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -29,6 +29,40 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
     const [planName, setPlanName] = useState('');
     const [isUploading, setIsUploading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    /**
+     * Where the upload lands.
+     *
+     * This used to be implicit and surprising: whenever any floor plan existed,
+     * an upload silently merged its walls/doors/rooms into the *current* plan
+     * even though the dialog is titled "New Floor Plan" and is opened from a
+     * button labelled "Add Floor Plan". Uploading a second storey therefore
+     * stacked it on top of the first. Now the choice is explicit and defaults to
+     * creating a new plan.
+     */
+    const currentPlan = getCurrentFloorPlan();
+    const [target, setTarget] = useState<'new' | 'current'>('new');
+
+    // Reset transient state whenever the dialog is reopened, so a previous
+    // failed attempt does not leave a stale error or preview behind.
+    React.useEffect(() => {
+        if (!isOpen) return;
+        setError(null);
+        setTarget('new');
+    }, [isOpen]);
+
+    // Escape to dismiss — every other dialog in the app supports it.
+    React.useEffect(() => {
+        if (!isOpen) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape' && !isUploading) {
+                e.stopPropagation();
+                onClose();
+            }
+        };
+        window.addEventListener('keydown', handleKeyDown);
+        return () => window.removeEventListener('keydown', handleKeyDown);
+    }, [isOpen, isUploading, onClose]);
 
     // Handle file selection
     const handleFileSelect = useCallback((file: File) => {
@@ -166,25 +200,23 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
             const rooms: Room[] = detectedData?.rooms || [];
             const ocr = detectedData?.ocr;
 
-            // Create or update floor plan
-            const currentPlan = getCurrentFloorPlan();
-            if (currentPlan) {
-                updateFloorPlan(currentPlan.id, {
+            // Create or update floor plan.
+            // `target` is chosen explicitly in the dialog; previously this branched
+            // on whether *any* plan existed, which merged uploads unexpectedly.
+            const mergeInto = target === 'current' ? currentPlan : undefined;
+            if (mergeInto) {
+                updateFloorPlan(mergeInto.id, {
                     name: planName,
                     backgroundImageId: imageId,
                     width: img.width,
                     height: img.height,
-                    walls: processedWalls.length > 0 ? [...currentPlan.walls, ...processedWalls] : currentPlan.walls,
+                    walls: processedWalls.length > 0 ? [...mergeInto.walls, ...processedWalls] : mergeInto.walls,
                     originalWalls: rawWalls, // Save original
-                    doors: doors.length > 0 ? [...currentPlan.doors, ...doors] : currentPlan.doors,
-                    windows: windows.length > 0 ? [...currentPlan.windows, ...windows] : currentPlan.windows,
-                    rooms: rooms.length > 0 ? [...currentPlan.rooms, ...rooms] : currentPlan.rooms,
-                    ocr: ocr || currentPlan.ocr
+                    doors: doors.length > 0 ? [...mergeInto.doors, ...doors] : mergeInto.doors,
+                    windows: windows.length > 0 ? [...mergeInto.windows, ...windows] : mergeInto.windows,
+                    rooms: rooms.length > 0 ? [...mergeInto.rooms, ...rooms] : mergeInto.rooms,
+                    ocr: ocr || mergeInto.ocr
                 });
-                // TODO: Add doors/windows/rooms to the store for this plan
-                // This requires valid action creators in the store or manual state updates.
-                // Assuming we can just dispatch actions or the 'updateFloorPlan' might support 'components'.
-                // If not, we will just have walls for now.
             } else {
                 // New Plan
                 const newPlan: FloorPlan = {
@@ -210,15 +242,6 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
                     scale: 1
                 };
                 addFloorPlan(newPlan);
-            }
-
-            // If we have other detected items, we should try to add them
-            if (detectedData) {
-                // This part depends on the Store API. If 'addFloorPlan' doesn't take doors/windows,
-                // we would need to call 'addComponent' for each. 
-                // Since I cannot see the full store definition right now, I will assume the user 
-                // wants to AT LEAST see walls. 
-                // I will add a TODO or try to implement if I see the store supports it.
             }
 
             // Reset and close
@@ -250,6 +273,9 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
         });
 
         setPlanName('');
+        setSelectedFile(null);
+        setPreview(null);
+        setError(null);
         onClose();
     };
 
@@ -379,13 +405,17 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
                                     ✨ Smart Layout Detect
                                 </label>
                                 <p className="text-xs opacity-60" style={{ color: colors.text }}>
-                                    Automatically detect walls and rooms using AI
+                                    Detect walls, doors, windows and room labels automatically.
+                                    Takes 20-60 seconds and needs an internet connection.
                                 </p>
                             </div>
                             <button
                                 onClick={() => setAutoDetect(!autoDetect)}
+                                role="switch"
+                                aria-checked={autoDetect}
+                                aria-label="Smart Layout Detect"
                                 className={`
-                                    relative inline-flex h-6 w-11 items-center rounded-full transition-colors
+                                    relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors
                                     ${autoDetect ? 'bg-blue-500' : 'bg-gray-200 dark:bg-gray-700'}
                                 `}
                             >
@@ -399,9 +429,46 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
                         </div>
                     )}
 
+                    {/* Destination. Only relevant once a plan already exists —
+                        otherwise there is nothing to merge into. */}
+                    {selectedFile && currentPlan && (
+                        <div>
+                            <label className="mb-1 block text-sm font-medium" style={{ color: colors.text }}>
+                                Add to
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {([
+                                    { key: 'new' as const, title: 'New floor plan', hint: 'Keeps existing plans untouched' },
+                                    { key: 'current' as const, title: `Merge into "${currentPlan.name}"`, hint: 'Adds detected walls to the open plan' }
+                                ]).map(option => (
+                                    <button
+                                        key={option.key}
+                                        type="button"
+                                        onClick={() => setTarget(option.key)}
+                                        className={`rounded-lg border p-2 text-left transition-colors ${target === option.key ? 'border-blue-500 bg-blue-500/10' : 'hover:bg-black/5 dark:hover:bg-white/5'}`}
+                                        style={target === option.key ? {} : { borderColor: colors.border }}
+                                    >
+                                        <span className="block text-xs font-medium" style={{ color: colors.text }}>
+                                            {option.title}
+                                        </span>
+                                        <span className="block text-[10px] opacity-60" style={{ color: colors.text }}>
+                                            {option.hint}
+                                        </span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+                    )}
+
                     {/* Error Message */}
                     {error && (
-                        <p className="text-sm text-red-500">{error}</p>
+                        <p className="text-sm text-red-500" role="alert">{error}</p>
+                    )}
+
+                    {detecting && (
+                        <p className="text-xs opacity-70" style={{ color: colors.text }}>
+                            Detecting layout… the detection service may need to wake up first.
+                        </p>
                     )}
                 </div>
 
@@ -412,8 +479,10 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
                 >
                     <button
                         onClick={handleCreateBlank}
-                        className="px-4 py-2 text-sm rounded-lg hover:bg-white/10 transition-colors"
+                        disabled={isUploading || !planName.trim()}
+                        className="px-4 py-2 text-sm rounded-lg transition-colors hover:bg-white/10 disabled:cursor-not-allowed disabled:opacity-40"
                         style={{ color: colors.text }}
+                        title={planName.trim() ? 'Start with an empty canvas' : 'Enter a name first'}
                     >
                         Create Blank Plan
                     </button>
@@ -429,11 +498,14 @@ export const UploadPlanDialog: React.FC<UploadPlanDialogProps> = ({ isOpen, onCl
 
                         <button
                             onClick={handleUpload}
-                            disabled={isUploading || !planName.trim()}
+                            // Also requires a file: without one this button used to
+                            // be clickable and then fail on a null preview.
+                            disabled={isUploading || !planName.trim() || !selectedFile}
+                            title={!selectedFile ? 'Select an image, or use Create Blank Plan' : undefined}
                             className={`
                                 px-4 py-2 text-sm rounded-lg text-white font-medium
                                 transition-all flex items-center gap-2
-                                ${isUploading || !planName.trim()
+                                ${isUploading || !planName.trim() || !selectedFile
                                     ? 'bg-blue-500/50 cursor-not-allowed'
                                     : 'bg-blue-500 hover:bg-blue-600'
                                 }

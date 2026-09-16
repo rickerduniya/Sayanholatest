@@ -10,10 +10,12 @@ import {
     LayoutWindow,
     LayoutComponent,
     LayoutConnection,
+    LayoutTextItem,
     DrawingTool,
     DrawingState,
     ViewMode,
-    LayoutComponentType
+    LayoutComponentType,
+    Point
 } from '../types/layout';
 import { generateLayoutId } from '../utils/LayoutDrawingTools';
 import { stitchWalls, remapAttachedItems } from '../utils/WallStitching';
@@ -114,8 +116,18 @@ interface LayoutStoreState {
     // Selection
     selectedElementIds: string[];
     selectElement: (id: string, multi?: boolean) => void;
+    selectElements: (ids: string[], additive?: boolean) => void;
+    selectAll: () => void;
     clearSelection: () => void;
     deleteSelected: () => void;
+
+    // Editing helpers used by the selection inspector / keyboard
+    nudgeSelection: (dx: number, dy: number) => void;
+    duplicateSelection: () => void;
+    addTextItem: (item: Omit<LayoutTextItem, 'id'>) => string;
+    updateTextItem: (id: string, updates: Partial<LayoutTextItem>) => void;
+    removeTextItem: (id: string) => void;
+    rotateSelection: (degrees: number) => void;
 
     // Viewport
     updateViewport: (x: number, y: number, scale: number) => void;
@@ -838,6 +850,30 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
         return { selectedElementIds: [id] };
     }),
 
+    // Replace or extend the selection with a set of ids. Used by rubber-band
+    // box selection, where the whole set is known at once.
+    selectElements: (ids, additive = false) => set((state) => {
+        if (!additive) return { selectedElementIds: [...new Set(ids)] };
+        return { selectedElementIds: [...new Set([...state.selectedElementIds, ...ids])] };
+    }),
+
+    // Ctrl+A — select every editable element on the active floor plan.
+    selectAll: () => set((state) => {
+        const fp = findCurrentPlan(state.floorPlans, state.activeFloorPlanId);
+        if (!fp) return {};
+
+        return {
+            selectedElementIds: [
+                ...fp.walls.map(w => w.id),
+                ...fp.rooms.map(r => r.id),
+                ...fp.doors.map(d => d.id),
+                ...fp.windows.map(w => w.id),
+                ...fp.components.map(c => c.id),
+                ...(fp.textItems || []).map(t => t.id)
+            ]
+        };
+    }),
+
     clearSelection: () => set({ selectedElementIds: [] }),
 
     deleteSelected: () => {
@@ -907,6 +943,188 @@ export const useLayoutStore = create<LayoutStoreState>((set, get) => ({
                 useStore.getState().cleanStaleStagingItems();
             });
         }
+    },
+
+    // Move every selected element by a delta. Arrow-key nudging needs this to
+    // work across mixed selections (walls move both endpoints, doors/windows
+    // move their centre, rooms move every polygon vertex).
+    nudgeSelection: (dx, dy) => {
+        const { selectedElementIds, activeFloorPlanId } = get();
+        if (selectedElementIds.length === 0 || (dx === 0 && dy === 0)) return;
+
+        get().takeSnapshot();
+        const ids = new Set(selectedElementIds);
+        const shift = (p: Point) => ({ x: p.x + dx, y: p.y + dy });
+
+        set((state) => {
+            const fp = findCurrentPlan(state.floorPlans, activeFloorPlanId);
+            if (!fp) return {};
+
+            return {
+                floorPlans: state.floorPlans.map(p => p.id !== fp.id ? p : {
+                    ...p,
+                    walls: p.walls.map(w => ids.has(w.id)
+                        ? { ...w, startPoint: shift(w.startPoint), endPoint: shift(w.endPoint) }
+                        : w),
+                    rooms: p.rooms.map(r => ids.has(r.id)
+                        ? { ...r, polygon: r.polygon.map(shift) }
+                        : r),
+                    doors: p.doors.map(d => ids.has(d.id)
+                        ? { ...d, position: shift(d.position) }
+                        : d),
+                    windows: p.windows.map(w => ids.has(w.id)
+                        ? { ...w, position: shift(w.position) }
+                        : w),
+                    components: p.components.map(c => ids.has(c.id)
+                        ? { ...c, position: shift(c.position) }
+                        : c),
+                    textItems: (p.textItems || []).map(t => ids.has(t.id)
+                        ? { ...t, position: shift(t.position) }
+                        : t)
+                })
+            };
+        });
+    },
+
+    // Ctrl+D — copy the selection in place with a small offset and select the
+    // copies, so repeated presses walk across the canvas.
+    duplicateSelection: () => {
+        const { selectedElementIds, activeFloorPlanId, floorPlans } = get();
+        const source = findCurrentPlan(floorPlans, activeFloorPlanId);
+        if (!source || selectedElementIds.length === 0) return;
+
+        const ids = new Set(selectedElementIds);
+        const offset = 20;
+        const shift = (p: Point) => ({ x: p.x + offset, y: p.y + offset });
+
+        const newComponents = source.components
+            .filter(c => ids.has(c.id))
+            .map(c => ({
+                ...c,
+                id: generateLayoutId('comp'),
+                position: shift(c.position),
+                // Clearing the link avoids two Layout components claiming the
+                // same SLD item, which would corrupt the bi-directional sync.
+                sldItemId: undefined
+            }));
+
+        const newWalls = source.walls
+            .filter(w => ids.has(w.id))
+            .map(w => ({
+                ...w,
+                id: generateLayoutId('wall'),
+                startPoint: shift(w.startPoint),
+                endPoint: shift(w.endPoint)
+            }));
+
+        const newTextItems = (source.textItems || [])
+            .filter(t => ids.has(t.id))
+            .map(t => ({
+                ...t,
+                id: generateLayoutId('text'),
+                position: shift(t.position)
+            }));
+
+        if (newComponents.length === 0 && newWalls.length === 0 && newTextItems.length === 0) return;
+
+        get().takeSnapshot();
+
+        set((state) => {
+            const fp = findCurrentPlan(state.floorPlans, activeFloorPlanId);
+            if (!fp) return {};
+
+            return {
+                floorPlans: state.floorPlans.map(p => p.id !== fp.id ? p : {
+                    ...p,
+                    components: [...p.components, ...newComponents],
+                    walls: [...p.walls, ...newWalls],
+                    textItems: [...(p.textItems || []), ...newTextItems]
+                }),
+                selectedElementIds: [
+                    ...newComponents.map(c => c.id),
+                    ...newWalls.map(w => w.id),
+                    ...newTextItems.map(t => t.id)
+                ]
+            };
+        });
+    },
+
+    updateTextItem: (id, updates) => {
+        const activeId = get().activeFloorPlanId;
+        set((state) => {
+            const fp = findCurrentPlan(state.floorPlans, activeId);
+            if (!fp) return {};
+
+            return {
+                floorPlans: state.floorPlans.map(p => p.id !== fp.id ? p : {
+                    ...p,
+                    textItems: (p.textItems || []).map(t => t.id === id ? { ...t, ...updates } : t)
+                })
+            };
+        });
+    },
+
+    addTextItem: (item) => {
+        get().takeSnapshot();
+        const newId = generateLayoutId('text');
+        const activeId = get().activeFloorPlanId;
+
+        set((state) => {
+            const fp = findCurrentPlan(state.floorPlans, activeId);
+            if (!fp) return {};
+
+            const newTextItem: LayoutTextItem = { ...item, id: newId };
+            return {
+                floorPlans: state.floorPlans.map(p =>
+                    p.id === fp.id ? { ...p, textItems: [...(p.textItems || []), newTextItem] } : p
+                )
+            };
+        });
+
+        return newId;
+    },
+
+    removeTextItem: (id) => {
+        get().takeSnapshot();
+        const activeId = get().activeFloorPlanId;
+
+        set((state) => {
+            const fp = findCurrentPlan(state.floorPlans, activeId);
+            if (!fp) return {};
+
+            return {
+                floorPlans: state.floorPlans.map(p =>
+                    p.id === fp.id ? { ...p, textItems: (p.textItems || []).filter(t => t.id !== id) } : p
+                )
+            };
+        });
+    },
+
+    // Rotate all selected components by a relative amount. Only components have
+    // a free rotation; doors and windows derive theirs from the host wall.
+    rotateSelection: (degrees) => {
+        const { selectedElementIds, activeFloorPlanId } = get();
+        if (selectedElementIds.length === 0) return;
+
+        const ids = new Set(selectedElementIds);
+        get().takeSnapshot();
+
+        set((state) => {
+            const fp = findCurrentPlan(state.floorPlans, activeFloorPlanId);
+            if (!fp) return {};
+
+            return {
+                floorPlans: state.floorPlans.map(p => p.id !== fp.id ? p : {
+                    ...p,
+                    components: p.components.map(c => ids.has(c.id)
+                        ? { ...c, rotation: (((c.rotation || 0) + degrees) % 360 + 360) % 360 }
+                        : c),
+                    textItems: (p.textItems || []).map(t => ids.has(t.id)
+                        ? { ...t, rotation: (((t.rotation || 0) + degrees) % 360 + 360) % 360 }
+                        : t)
+                })
+            };
+        });
     },
 
     // Viewport

@@ -9,6 +9,7 @@ import { SettingsDialog } from './components/SettingsDialog';
 import { VoltageDropCalculatorDialog } from './components/VoltageDropCalculatorDialog';
 import { MobileDetector } from './components/MobileDetector';
 import { ChatPanel } from './components/ChatPanel';
+import { AgentPanel } from './components/AgentPanel';
 import { AutoRatingResultDialog } from './components/AutoRatingResultDialog';
 
 import { SaveProjectDialog } from './components/SaveProjectDialog';
@@ -25,8 +26,10 @@ import { useTheme } from './context/ThemeContext';
 import { apiTracer } from './utils/apiTracer';
 import { updateItemVisuals } from './utils/SvgUpdater';
 import { applyAutoArrange } from './utils/AutoArrange';
+import { ApplicationSettings } from './utils/ApplicationSettings';
 import { exportProjectToFile, importProjectFromFile } from './utils/LocalProjectService';
 import { Toast } from './components/Toast';
+import { ServerStatusBanner } from './components/ServerStatusBanner';
 import { BrowserRouter, Navigate, Routes, Route, useNavigate } from 'react-router-dom';
 import { ChevronDown, LogOut, User } from 'lucide-react';
 import LandingPage from './components/LandingPage';
@@ -55,6 +58,7 @@ function DesignerApp() {
 
     const [showVoltageDropDialog, setShowVoltageDropDialog] = useState(false);
     const [showNetworkMonitor, setShowNetworkMonitor] = useState(false);
+    const [showAgentPanel, setShowAgentPanel] = useState(false);
     const [showAutoRatingResult, setShowAutoRatingResult] = useState(false);
     const [autoRatingSuccess, setAutoRatingSuccess] = useState(false);
     const [autoRatingMessage, setAutoRatingMessage] = useState('');
@@ -103,35 +107,11 @@ function DesignerApp() {
         };
     }, []);
 
-    // Wake-up Backend Check
-    useEffect(() => {
-        const wakeUpBackend = async () => {
-            const startTime = Date.now();
-            let notified = false;
-
-            // Initial check - if it takes long, show toast
-            const timer = setTimeout(() => {
-                setToastMessage('Waking up backend server... this may take up to 30 seconds.');
-                setToastType('info');
-                setToastDuration(0); // 0 = Keep visible indefinitely until manually closed/replaced
-                notified = true;
-            }, 2000);
-
-            try {
-                await api.checkHealth();
-                clearTimeout(timer);
-                if (notified) {
-                    setToastMessage('Backend is ready!');
-                    setToastType('success');
-                    setToastDuration(3000); // Revert to short duration
-                }
-            } catch (e) {
-                console.error("Backend validation failed", e);
-            }
-        };
-
-        wakeUpBackend();
-    }, []);
+    // Backend cold start is handled globally by serverWakeService (started in
+    // main.tsx before mount) and surfaced by <ServerStatusBanner />. It used to
+    // be a useEffect here, which meant the wake-up only began once the user had
+    // already logged in and reached the designer — exactly when they are about
+    // to need the backend. Waking from the landing page hides the delay instead.
 
     // Keyboard Shortcuts for Undo/Redo
     useEffect(() => {
@@ -499,7 +479,7 @@ function DesignerApp() {
         const sheet = st.getCurrentSheet();
         if (!sheet) return;
         st.takeSnapshot();
-        const newItems = applyAutoArrange(sheet.canvasItems, sheet.storedConnectors);
+        const newItems = applyAutoArrange(sheet.canvasItems, sheet.storedConnectors, ApplicationSettings.getSldDownstreamGapFactor());
         st.updateSheet({ canvasItems: newItems }, { recalcNetwork: false });
     };
     const handleSaveImage = () => {
@@ -609,6 +589,8 @@ function DesignerApp() {
                     showLeftPanel={showLeftPanel}
                     showChat={isChatOpen}
                     onToggleChat={toggleChat}
+                    showAgent={showAgentPanel}
+                    onToggleAgent={() => setShowAgentPanel(prev => !prev)}
                 />
             ) : (
                 <div className="absolute inset-0 z-0">
@@ -723,6 +705,8 @@ function DesignerApp() {
                                 onToggleMenu={() => setShowMenu(!showMenu)}
                                 showChat={isChatOpen}
                                 onToggleChat={toggleChat}
+                                showAgent={showAgentPanel}
+                                onToggleAgent={() => setShowAgentPanel(prev => !prev)}
                                 onAutoRate={handleAutoRate}
                                 onAddText={() => setIsAddTextMode(!isAddTextMode)}
                                 isAddTextMode={isAddTextMode}
@@ -768,6 +752,20 @@ function DesignerApp() {
 
             {/* Chat Panel - Floating */}
             <ChatPanel />
+
+            {/* Design Agent Panel - Floating.
+                Rendered at the app level (not inside LayoutDesigner) so a run
+                survives switching between Layout and SLD views: the agent works
+                across both, and unmounting the panel mid-run would orphan it. */}
+            <AgentPanel
+                isOpen={showAgentPanel}
+                onClose={() => setShowAgentPanel(false)}
+                showToast={(message, type) => {
+                    setToastMessage(message);
+                    setToastType(type);
+                    setToastDuration(3500);
+                }}
+            />
 
             {/* Settings Dialog */}
             <SettingsDialog
@@ -921,6 +919,9 @@ function DesignerApp() {
 function App() {
     return (
         <BrowserRouter>
+            {/* Rendered outside <Routes> so cold-start feedback is visible on
+                every page, including the landing page where the wake begins. */}
+            <ServerStatusBanner />
             <Routes>
                 <Route path="/" element={<LandingPage />} />
                 <Route path="/auth" element={<AuthPage />} />

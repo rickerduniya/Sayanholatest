@@ -1,29 +1,55 @@
-// Layout Designer - Main layout design view wrapper with sync functionality
+﻿// Layout Designer - Main layout design view wrapper with sync functionality
 // Combines LayoutCanvas, LayoutSidebar, LayoutToolbar into a complete view
 
 import React, { useRef, useState, useCallback, forwardRef, useImperativeHandle } from 'react';
 import { LayoutCanvas, LayoutCanvasRef } from './LayoutCanvas';
 import { LayoutSidebar } from './LayoutSidebar';
 import { LayoutToolbar } from './LayoutToolbar.tsx';
+import { LayoutInspector } from './LayoutInspector';
 import { UploadPlanDialog } from './UploadPlanDialog';
 import { ScaleCalibrationDialog } from './ScaleCalibrationDialog';
 import { useLayoutStore } from '../store/useLayoutStore';
 import { useStore } from '../store/useStore';
 import { useTheme } from '../context/ThemeContext';
-import { Plus, RefreshCw, CheckCircle, AlertCircle, Layers } from 'lucide-react';
+import { Plus, RefreshCw, CheckCircle, AlertCircle, Layers, X } from 'lucide-react';
 import { syncEngine, calculateFloorPlanLoad } from '../utils/SyncEngine';
+import { agentController } from '../agent/AgentController';
+import { DRAWING_TOOL_INSTRUCTIONS } from '../utils/LayoutDrawingTools';
+import { DrawingTool, Point } from '../types/layout';
 
 interface LayoutDesignerProps {
     showLeftPanel: boolean;
     showChat: boolean;
     onToggleChat: () => void;
+    /** Design Agent panel visibility, owned by App so a run survives view switches. */
+    showAgent?: boolean;
+    onToggleAgent?: () => void;
 }
 
 export interface LayoutDesignerRef {
     saveImage: () => void;
 }
 
-export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>(({ showLeftPanel, showChat, onToggleChat }, ref) => {
+/**
+ * Single-key tool shortcuts.
+ *
+ * The toolbar has always *displayed* these hints but nothing was ever bound to
+ * them, so every tool change required a trip to the toolbar with the mouse.
+ * Space (temporary pan) and Esc are handled inside LayoutCanvas because they
+ * interact with in-progress drawing state.
+ */
+const TOOL_SHORTCUTS: Record<string, DrawingTool> = {
+    v: 'select',
+    w: 'wall',
+    r: 'room',
+    d: 'door',
+    n: 'window',
+    s: 'stair',
+    p: 'pick',
+    c: 'connection'
+};
+
+export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>(({ showLeftPanel, showChat, onToggleChat, showAgent, onToggleAgent }, ref) => {
     const { colors, theme } = useTheme();
     const canvasRef = useRef<LayoutCanvasRef>(null);
 
@@ -35,10 +61,16 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
         copySelection,
         pasteSelection,
         deleteSelected,
+        duplicateSelection,
+        nudgeSelection,
+        selectAll,
+        selectedElementIds,
         undo,
         redo,
         setActiveTool,
         drawingState,
+        updateFloorPlan,
+        removeFloorPlan,
         visibility: { showWalls, showDoors, showWindows, showRooms },
         setLayoutVisibility
     } = useLayoutStore();
@@ -55,38 +87,144 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
     const [measuredPixels, setMeasuredPixels] = useState<number | undefined>(undefined);
     const [isAddTextMode, setIsAddTextMode] = useState(false);
 
+    /** Live cursor position for the status bar, pushed up from the canvas. */
+    const [cursorWorld, setCursorWorld] = useState<Point | null>(null);
+
+    /** Right-hand properties panel. On by default: it doubles as the shortcut guide. */
+    const [showInspector, setShowInspector] = useState(true);
+
+    /** Inline floor-plan tab rename. Holds the id being renamed, or null. */
+    const [renamingPlanId, setRenamingPlanId] = useState<string | null>(null);
+    const [renameDraft, setRenameDraft] = useState('');
+
+    /**
+     * Whether the design agent is mid-run.
+     *
+     * Used to stand the automatic Layout↔SLD staging sync down while the agent
+     * owns both views — see the auto-sync effects below for why that matters.
+     */
+    const [agentBusy, setAgentBusy] = useState(() => agentController.isSuppressingAutoSync());
+    React.useEffect(
+        () => agentController.subscribe(() => setAgentBusy(agentController.isSuppressingAutoSync())),
+        []
+    );
+
     // Keyboard shortcuts
     React.useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.defaultPrevented) return;
-            // Ignore if input/textarea is focused or content is editable
+            // Ignore if input/textarea/select is focused or content is editable.
+            // `select` was missing before, so pressing D over the room-type
+            // dropdown switched tools instead of picking an option.
             const target = e.target as HTMLElement;
             const tagName = target.tagName?.toLowerCase();
-            if (tagName === 'input' || tagName === 'textarea' || target.isContentEditable) return;
+            if (tagName === 'input' || tagName === 'textarea' || tagName === 'select' || target.isContentEditable) return;
 
-            if ((e.ctrlKey || e.metaKey) && e.key === 'c') {
+            const ctrl = e.ctrlKey || e.metaKey;
+
+            if (ctrl && e.key.toLowerCase() === 'c') {
                 e.preventDefault();
                 copySelection();
+                return;
             }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'v') {
+            if (ctrl && e.key.toLowerCase() === 'v') {
                 e.preventDefault();
                 pasteSelection();
+                return;
             }
-            if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+            if (ctrl && e.key.toLowerCase() === 'd') {
+                // Browser default here is "bookmark page", which is never what a
+                // user wants while drafting.
+                e.preventDefault();
+                duplicateSelection();
+                return;
+            }
+            if (ctrl && e.key.toLowerCase() === 'a') {
+                e.preventDefault();
+                selectAll();
+                return;
+            }
+            if (ctrl && e.key.toLowerCase() === 'z') {
                 e.preventDefault();
                 if (e.shiftKey) redo();
                 else undo();
+                return;
             }
+
+            // Arrow-key nudging. Shift multiplies the step for coarse moves.
+            if (e.key.startsWith('Arrow')) {
+                if (selectedElementIds.length === 0) return;
+                const step = e.shiftKey ? 10 : 1;
+                const deltas: Record<string, [number, number]> = {
+                    ArrowLeft: [-step, 0],
+                    ArrowRight: [step, 0],
+                    ArrowUp: [0, -step],
+                    ArrowDown: [0, step]
+                };
+                const delta = deltas[e.key];
+                if (delta) {
+                    e.preventDefault();
+                    nudgeSelection(delta[0], delta[1]);
+                }
+                return;
+            }
+
             if (e.key === 'Delete' || e.key === 'Backspace') {
-                // e.preventDefault(); // Don't prevent default for backspace as it might be navigation, but for Delete it's fine
                 if (e.key === 'Delete') e.preventDefault();
                 deleteSelected();
+                return;
+            }
+
+            // Zoom, matching the hints already shown in the toolbar.
+            if (e.key === '+' || e.key === '=') {
+                e.preventDefault();
+                canvasRef.current?.zoomIn();
+                return;
+            }
+            if (e.key === '-' || e.key === '_') {
+                e.preventDefault();
+                canvasRef.current?.zoomOut();
+                return;
+            }
+            if (e.shiftKey && e.key === '!') {
+                // Shift+1
+                e.preventDefault();
+                canvasRef.current?.fitView();
+                return;
+            }
+
+            // Single-key tool switching. Skip when any modifier is held so we
+            // never shadow a browser or OS shortcut.
+            if (ctrl || e.altKey) return;
+
+            if (e.key.toLowerCase() === 't') {
+                e.preventDefault();
+                setIsAddTextMode(prev => !prev);
+                return;
+            }
+
+            const tool = TOOL_SHORTCUTS[e.key.toLowerCase()];
+            if (tool) {
+                e.preventDefault();
+                setIsAddTextMode(false);
+                setActiveTool(tool);
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [copySelection, pasteSelection, deleteSelected, undo, redo]);
+    }, [
+        copySelection,
+        pasteSelection,
+        deleteSelected,
+        duplicateSelection,
+        nudgeSelection,
+        selectAll,
+        selectedElementIds.length,
+        undo,
+        redo,
+        setActiveTool
+    ]);
 
     const currentPlan = getCurrentFloorPlan();
 
@@ -212,6 +350,24 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
             return;
         }
 
+        // Stand down while the design agent is running.
+        //
+        // This auto-sync stages a copy of every newly placed component in the
+        // "Unplaced" tray, which is right for a human but actively harmful during
+        // an agent run: the agent places 26 components, the tray fills up, and
+        // layout_build_sld then treats "staged" as "already has a symbol" and
+        // materializes nothing. The agent sees an empty sheet, falls back to
+        // add_item_to_diagram, and builds a second set of symbols with no link
+        // back to the layout — which is why items stayed in Unplaced on both
+        // sides and the SLD connections had no layout counterpart.
+        //
+        // The count ref is still advanced so that when the run ends we do not
+        // fire a burst of catch-up syncs for work the agent already materialized.
+        if (agentController.isSuppressingAutoSync()) {
+            prevComponentCountRef.current = currentCount;
+            return;
+        }
+
         // Coalesce rapid additions into one sync. Adding a large set of
         // components used to start a complete sync after every drop.
         if (currentCount !== prevCount && currentCount > 0) {
@@ -233,7 +389,7 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                 autoSyncTimerRef.current = null;
             }
         };
-    }, [currentPlan?.components?.length]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [currentPlan?.components?.length, agentBusy]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Sync SLD to Layout (Reverse Sync) - Populates Layout Staging
     // We check this on mount or when SLD sheet items change significantly?
@@ -242,6 +398,13 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
 
     React.useEffect(() => {
         if (!currentPlan) return;
+
+        // Same reasoning as the forward auto-sync: while the agent runs, it owns
+        // both views. Reverse-syncing mid-run would stage a Layout copy of every
+        // SLD symbol the agent just created — filling the Layout "Unplaced" tray
+        // with items that are already placed, because the sldItemId link is
+        // written a moment after the symbol appears.
+        if (agentBusy) return;
 
         // Get SLD components (all sheets)
         const sldComponents = sheets.flatMap(s => s.canvasItems);
@@ -310,7 +473,7 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                 setStagingComponents(cleanedExisting);
             }
         }
-    }, [currentPlan, sheets, activeSheetId, setStagingComponents]); // Removed layoutStaging to prevent loop
+    }, [currentPlan, sheets, activeSheetId, setStagingComponents, agentBusy]); // Removed layoutStaging to prevent loop
 
     // REVERSE SYNC: Clean SLD staging when Layout components are deleted
     // This effect ensures that when a Layout component is deleted, any SLD staging items
@@ -342,6 +505,25 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
         }
     }, [currentPlan?.components, setStagingItems]);
 
+    // CATCH-UP SYNC: run once when the agent finishes.
+    //
+    // The auto-sync above stands down during a run, so anything the agent placed
+    // but never materialized into the schematic would otherwise be invisible in
+    // the Unplaced tray. One sync on the falling edge puts those — and only
+    // those — in the tray; components the agent already wired are skipped because
+    // their sldItemId is on the sheet.
+    const prevAgentBusyRef = React.useRef(agentBusy);
+    React.useEffect(() => {
+        const wasBusy = prevAgentBusyRef.current;
+        prevAgentBusyRef.current = agentBusy;
+
+        if (!wasBusy || agentBusy) return;
+        if (!currentPlan || currentPlan.components.length === 0) return;
+
+        const timer = setTimeout(() => handleSyncToSld(), 400);
+        return () => clearTimeout(timer);
+    }, [agentBusy]); // eslint-disable-line react-hooks/exhaustive-deps
+
     return (
         <>
             {/* Full Screen Canvas */}
@@ -366,58 +548,113 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                         setSyncMessage(message);
                         window.setTimeout(() => setSyncStatus('idle'), 3500);
                     }}
+                    onCursorChange={setCursorWorld}
+                    onRequestNewPlan={() => setShowUploadDialog(true)}
+                    inspectorOpen={showInspector}
+                    loadSummaryVisible={Boolean(loadSummary && loadSummary.totalLoad > 0)}
                 />
             </div>
 
-            {/* Toolbar - Centered */}
-            <div className="absolute left-1/2 transform -translate-x-1/2 top-2 z-50 pointer-events-auto">
-                <LayoutToolbar
-                    scale={scale}
-                    onZoomIn={() => canvasRef.current?.zoomIn()}
-                    onZoomOut={() => canvasRef.current?.zoomOut()}
-                    onFitView={() => canvasRef.current?.fitView()}
-                    onUploadPlan={() => setShowUploadDialog(true)}
-                    onScaleCalibrate={() => {
-                        setActiveTool('calibrate');
-                        setMeasuredPixels(undefined);
-                    }}
-                    showMagicWires={showMagicWires}
-                    onToggleMagicWires={() => setShowMagicWires(!showMagicWires)}
-                    showChat={showChat}
-                    onToggleChat={onToggleChat}
-                    showWalls={showWalls}
-                    onToggleWalls={() => setLayoutVisibility('showWalls', !showWalls)}
-                    showDoors={showDoors}
-                    onToggleDoors={() => setLayoutVisibility('showDoors', !showDoors)}
-                    showWindows={showWindows}
-                    onToggleWindows={() => setLayoutVisibility('showWindows', !showWindows)}
-                    showRooms={showRooms}
-                    onToggleRooms={() => setLayoutVisibility('showRooms', !showRooms)}
-                    isAddTextMode={isAddTextMode}
-                    onAddText={() => setIsAddTextMode(!isAddTextMode)}
-                />
+            {/* Toolbar.
+                On its own row below App's top bar (menu / branding / view toggle
+                / account) rather than sharing it. It was previously centred on the
+                whole viewport at ~880px wide, so on anything under ~1600px it ran
+                underneath the SLD/Layout toggle — and because App's top bar paints
+                after this at the same z-index, the toggle captured the clicks and
+                the right-hand tools became unreachable. A dedicated row removes the
+                competition entirely; overflow-x-auto keeps every tool reachable on
+                narrow windows. */}
+            <div className="pointer-events-none absolute left-2 right-2 top-14 z-50 flex justify-center">
+                <div className="pointer-events-auto max-w-full overflow-x-auto">
+                    <LayoutToolbar
+                        scale={scale}
+                        onZoomIn={() => canvasRef.current?.zoomIn()}
+                        onZoomOut={() => canvasRef.current?.zoomOut()}
+                        onFitView={() => canvasRef.current?.fitView()}
+                        onUploadPlan={() => setShowUploadDialog(true)}
+                        onScaleCalibrate={() => {
+                            setActiveTool('calibrate');
+                            setMeasuredPixels(undefined);
+                        }}
+                        showMagicWires={showMagicWires}
+                        onToggleMagicWires={() => setShowMagicWires(!showMagicWires)}
+                        showChat={showChat}
+                        onToggleChat={onToggleChat}
+                        showAgent={showAgent}
+                        onToggleAgent={onToggleAgent}
+                        showWalls={showWalls}
+                        onToggleWalls={() => setLayoutVisibility('showWalls', !showWalls)}
+                        showDoors={showDoors}
+                        onToggleDoors={() => setLayoutVisibility('showDoors', !showDoors)}
+                        showWindows={showWindows}
+                        onToggleWindows={() => setLayoutVisibility('showWindows', !showWindows)}
+                        showRooms={showRooms}
+                        onToggleRooms={() => setLayoutVisibility('showRooms', !showRooms)}
+                        isAddTextMode={isAddTextMode}
+                        onAddText={() => setIsAddTextMode(!isAddTextMode)}
+                        showInspector={showInspector}
+                        onToggleInspector={() => setShowInspector(prev => !prev)}
+                        onNotify={(status, message) => {
+                            setSyncStatus(status);
+                            setSyncMessage(message);
+                            window.setTimeout(() => setSyncStatus('idle'), 3500);
+                        }}
+                    />
+                </div>
             </div>
 
-            {/* Left Sidebar - Floating */}
+            {/* Left Sidebar - Floating.
+                top-28 clears App's top bar (row 1) and the tool row (row 2). */}
             {showLeftPanel && (
                 <div
-                    className="absolute left-4 top-12 bottom-4 w-48 z-40 premium-glass rounded-xl overflow-hidden flex flex-col transition-all duration-300 animate-slide-in-left shadow-xl"
+                    className="absolute left-4 top-28 bottom-14 w-48 z-40 premium-glass rounded-xl overflow-hidden flex flex-col transition-all duration-300 animate-slide-in-left shadow-xl"
                     style={{ backgroundColor: colors.panelBackground }}
                 >
                     <LayoutSidebar />
                 </div>
             )}
 
+            {/* Right properties panel.
+                The Layout view previously had no equivalent of the SLD
+                properties panel, so element attributes (wall thickness, room
+                name/type, door width, component label and wattage) simply could
+                not be edited after creation. */}
+            {showInspector && (
+                <div
+                    className="absolute right-4 top-28 bottom-14 w-56 z-40 premium-glass rounded-xl overflow-hidden flex flex-col animate-slide-in-right shadow-xl"
+                    style={{ backgroundColor: colors.panelBackground }}
+                >
+                    <div
+                        className="flex items-center justify-between border-b px-3 py-2"
+                        style={{ borderColor: colors.border, color: colors.text }}
+                    >
+                        <span className="text-xs font-semibold">Properties</span>
+                        <button
+                            type="button"
+                            onClick={() => setShowInspector(false)}
+                            className="rounded p-0.5 transition-colors hover:bg-black/10 dark:hover:bg-white/10"
+                            aria-label="Close properties panel"
+                        >
+                            <X size={14} />
+                        </button>
+                    </div>
+                    <div className="flex-1 overflow-hidden">
+                        <LayoutInspector />
+                    </div>
+                </div>
+            )}
+
             {drawingState.activeTool === 'connection' && (
-                <div className="absolute top-16 left-1/2 -translate-x-1/2 z-40 rounded-full px-4 py-2 text-xs font-medium shadow-lg" style={{ backgroundColor: colors.panelBackground, color: colors.text, border: `1px solid ${colors.border}` }}>
+                <div className="absolute top-28 left-1/2 -translate-x-1/2 z-40 rounded-full px-4 py-2 text-xs font-medium shadow-lg" style={{ backgroundColor: colors.panelBackground, color: colors.text, border: `1px solid ${colors.border}` }}>
                     Connection mode: click a Point Switch Board and a load. Each connection uses the next free SLD output, from out1 to out9.
                 </div>
             )}
 
-            {/* Load Summary Panel - Top Right */}
+            {/* Load Summary Panel â€” sits left of the properties panel when that
+                is open, otherwise hugs the right edge. */}
             {loadSummary && loadSummary.totalLoad > 0 && (
                 <div
-                    className="absolute top-14 right-4 z-40 premium-glass rounded-xl p-3 shadow-lg animate-fade-in"
+                    className={`absolute top-28 z-40 premium-glass rounded-xl p-3 shadow-lg animate-fade-in transition-all duration-300 ${showInspector ? 'right-64' : 'right-4'}`}
                     style={{ backgroundColor: colors.panelBackground }}
                 >
                     <div className="text-xs font-medium mb-2 flex items-center gap-2" style={{ color: colors.text }}>
@@ -449,7 +686,7 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
             {syncStatus !== 'idle' && (
                 <div
                     className={`
-                        absolute top-20 left-1/2 transform -translate-x-1/2 z-50 
+                        absolute top-[124px] left-1/2 transform -translate-x-1/2 z-50 
                         px-4 py-2 rounded-lg shadow-lg flex items-center gap-2 text-sm
                         animate-fade-in
                         ${syncStatus === 'syncing' ? 'bg-blue-500 text-white' : ''}
@@ -464,55 +701,153 @@ export const LayoutDesigner = forwardRef<LayoutDesignerRef, LayoutDesignerProps>
                 </div>
             )}
 
-            {/* Floor Plan Tabs - Bottom */}
+            {/* Bottom bar: floor-plan tabs on the left, live status readout on the
+                right. The tool hint used to render at top-centre underneath the
+                floating toolbar, where it was overlapped and unreadable. */}
             <div
-                className={`absolute bottom-2 z-30 premium-glass rounded-full px-4 py-1.5 animate-slide-in-bottom transition-all duration-300 shadow-lg ${showLeftPanel ? 'left-56' : 'left-4'} right-4`}
+                className="absolute bottom-2 left-4 right-4 z-30 premium-glass rounded-full pl-3 pr-2 py-1.5 animate-slide-in-bottom shadow-lg"
                 style={{ backgroundColor: colors.menuBackground }}
             >
                 <div className="flex items-center gap-2">
                     {/* Plan tabs */}
-                    <div className="flex items-center gap-1 overflow-x-auto">
-                        {floorPlans.map(plan => (
-                            <button
-                                key={plan.id}
-                                onClick={() => setActiveFloorPlan(plan.id)}
-                                className={`
-                                    px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap
-                                    transition-all duration-150
-                                    ${activeFloorPlanId === plan.id
-                                        ? 'bg-blue-500 text-white shadow-md'
-                                        : 'hover:bg-white/10'
+                    <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+                        {floorPlans.map(plan => {
+                            const isActive = activeFloorPlanId === plan.id;
+                            const isRenaming = renamingPlanId === plan.id;
+
+                            if (isRenaming) {
+                                const commitRename = () => {
+                                    const next = renameDraft.trim();
+                                    if (next && next !== plan.name) {
+                                        updateFloorPlan(plan.id, { name: next });
                                     }
-                                `}
-                                style={activeFloorPlanId === plan.id ? {} : { color: colors.text }}
-                            >
-                                {plan.name}
-                                {/* Component count badge */}
-                                <span className={`ml-1.5 px-1.5 py-0.5 rounded-full text-[10px] ${activeFloorPlanId === plan.id
-                                    ? 'bg-white/20'
-                                    : 'bg-blue-500/20'
-                                    }`}>
-                                    {plan.components.length}
-                                </span>
-                            </button>
-                        ))}
+                                    setRenamingPlanId(null);
+                                };
+
+                                return (
+                                    <input
+                                        key={plan.id}
+                                        autoFocus
+                                        value={renameDraft}
+                                        onChange={(e) => setRenameDraft(e.target.value)}
+                                        onBlur={commitRename}
+                                        onKeyDown={(e) => {
+                                            e.stopPropagation();
+                                            if (e.key === 'Enter') commitRename();
+                                            if (e.key === 'Escape') setRenamingPlanId(null);
+                                        }}
+                                        className="w-32 rounded-full bg-white/15 px-3 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                        style={{ color: colors.text }}
+                                    />
+                                );
+                            }
+
+                            return (
+                                <div
+                                    key={plan.id}
+                                    className={`
+                                        group flex shrink-0 items-center gap-1 rounded-full pl-3 pr-1.5 py-1
+                                        text-xs font-medium whitespace-nowrap transition-all duration-150
+                                        ${isActive ? 'bg-blue-500 text-white shadow-md' : 'hover:bg-white/10'}
+                                    `}
+                                    style={isActive ? {} : { color: colors.text }}
+                                >
+                                    <button
+                                        type="button"
+                                        onClick={() => setActiveFloorPlan(plan.id)}
+                                        // Double-click to rename is the standard
+                                        // gesture for tabbed documents.
+                                        onDoubleClick={() => {
+                                            setRenamingPlanId(plan.id);
+                                            setRenameDraft(plan.name);
+                                        }}
+                                        title={`${plan.name} â€” double-click to rename`}
+                                        className="max-w-[140px] truncate"
+                                    >
+                                        {plan.name}
+                                    </button>
+
+                                    <span className={`rounded-full px-1.5 py-0.5 text-[10px] ${isActive ? 'bg-white/20' : 'bg-blue-500/20'}`}>
+                                        {plan.components.length}
+                                    </span>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            // Destructive and not undoable via the
+                                            // layout history, so confirm first.
+                                            const ok = window.confirm(
+                                                `Delete floor plan "${plan.name}"? Its walls, rooms and ${plan.components.length} component(s) will be removed.`
+                                            );
+                                            if (ok) removeFloorPlan(plan.id);
+                                        }}
+                                        title="Delete floor plan"
+                                        aria-label={`Delete ${plan.name}`}
+                                        className="rounded-full p-0.5 opacity-0 transition-opacity hover:bg-black/20 group-hover:opacity-70"
+                                    >
+                                        <X size={11} />
+                                    </button>
+                                </div>
+                            );
+                        })}
+
+                        {/* Add new plan button */}
+                        <button
+                            onClick={() => setShowUploadDialog(true)}
+                            className="shrink-0 rounded-full p-1.5 transition-colors hover:bg-white/10"
+                            title="Add Floor Plan"
+                        >
+                            <Plus size={16} style={{ color: colors.text }} />
+                        </button>
+
+                        {/* Empty state */}
+                        {floorPlans.length === 0 && (
+                            <span className="text-xs opacity-60" style={{ color: colors.text }}>
+                                No floor plans â€” click + to upload or create one
+                            </span>
+                        )}
                     </div>
 
-                    {/* Add new plan button */}
-                    <button
-                        onClick={() => setShowUploadDialog(true)}
-                        className="p-1.5 rounded-full hover:bg-white/10 transition-colors"
-                        title="Add Floor Plan"
+                    {/* Status readout */}
+                    <div
+                        className="hidden shrink-0 items-center gap-3 pl-3 text-[11px] md:flex"
+                        style={{ color: colors.text }}
                     >
-                        <Plus size={16} style={{ color: colors.text }} />
-                    </button>
-
-                    {/* Empty state */}
-                    {floorPlans.length === 0 && (
-                        <span className="text-xs opacity-60" style={{ color: colors.text }}>
-                            No floor plans - click + to create
+                        <span className="opacity-60">
+                            {isAddTextMode
+                                ? 'Click the canvas to place a text box'
+                                : DRAWING_TOOL_INSTRUCTIONS[drawingState.activeTool]}
                         </span>
-                    )}
+
+                        {selectedElementIds.length > 0 && (
+                            <span className="rounded-full bg-blue-500/20 px-2 py-0.5 font-medium text-blue-500">
+                                {selectedElementIds.length} selected
+                            </span>
+                        )}
+
+                        {cursorWorld && (
+                            <span className="font-mono opacity-50">
+                                {Math.round(cursorWorld.x)}, {Math.round(cursorWorld.y)}
+                            </span>
+                        )}
+
+                        {currentPlan && (
+                            <span
+                                className="font-mono opacity-50"
+                                title={currentPlan.isScaleCalibrated ? 'Scale calibrated' : 'Scale not calibrated â€” measurements are approximate'}
+                            >
+                                1{currentPlan.measurementUnit === 'ft' ? 'ft' : 'm'} â‰ˆ{' '}
+                                {Math.round(
+                                    currentPlan.measurementUnit === 'ft'
+                                        ? currentPlan.pixelsPerMeter * 0.3048
+                                        : currentPlan.pixelsPerMeter
+                                )}px
+                                {currentPlan.isScaleCalibrated ? '' : ' ?'}
+                            </span>
+                        )}
+
+                        <span className="font-mono opacity-50">{Math.round(scale * 100)}%</span>
+                    </div>
                 </div>
             </div>
 

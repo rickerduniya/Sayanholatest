@@ -17,21 +17,31 @@ import {
     LayoutComponentType,
     OcrItem
 } from '../types/layout';
-import { Connector, Point } from '../types';
+import { Connector, Point, CanvasItem } from '../types';
 import { createConnectorWithDefaults } from '../utils/ConnectorFactory';
 import {
     snapToWall,
     constrainWallAngle,
+    resolveDraftingSnap,
     DRAWING_TOOL_CURSORS,
     DRAWING_TOOL_INSTRUCTIONS,
     getRoomCentroid,
     calculateRoomArea,
     isPointInRoom,
-    findRoomAtPoint,
     getDistanceLabelWithUnit,
     getAreaLabel,
-    calculateOrthogonalPath
+    calculateOrthogonalPath,
+    normalizeBounds,
+    boundsArea,
+    boundsIntersect,
+    boundsFromPoints,
+    boundsAroundPoint,
+    Bounds
 } from '../utils/LayoutDrawingTools';
+// Boundary-tolerant room lookup. A wall-mounted fitting sits ON the room
+// polygon's edge, so a strict containment test leaves it with no room and drops
+// it from per-room load totals.
+import { findRoomForPoint, orientComponentOnWall, getRoomInteriorPoint, needsWallSeating } from '../utils/PlacementGeometry';
 import {
     LAYOUT_COMPONENT_DEFINITIONS,
     getLayoutComponentDef,
@@ -40,6 +50,8 @@ import {
 import { layoutImageStore } from '../utils/LayoutImageStore';
 import { useLayoutComponentImages } from '../hooks/useLayoutComponentImages';
 import { ApplicationSettings } from '../utils/ApplicationSettings';
+import { parseHtpnPointPhase, resolveUpstreamPhase, getLocalOutgoingPhase } from '../utils/NetworkAnalyzer';
+import type { LayoutConnection } from '../types/layout';
 
 export interface LayoutCanvasRef {
     saveImage: () => void;
@@ -51,7 +63,7 @@ export interface LayoutCanvasRef {
     fitView: () => void;
 }
 
-const getSldConnectorColor = (connector: Connector, theme: string): string => {
+const getSldConnectorColor = (connector: Connector, theme: string, allConnectors?: Connector[], allItems?: CanvasItem[]): string => {
     const useColor = ApplicationSettings.getSaveImageInColor();
     if (!useColor) return theme === 'dark' ? '#FFFFFF' : '#000000';
 
@@ -60,18 +72,78 @@ const getSldConnectorColor = (connector: Connector, theme: string): string => {
     if (phase === "Y") return '#FFD700';
     if (phase === "B") return '#0000CD';
 
+    // No Source connected yet: resolve the device-derived phase upstream so
+    // grand-children of any single-phase outgoing (HTPN ways, Busbar taps,
+    // LT panel feeders, SPN DBs, single-phase switches) color the same as
+    // immediate children.
+    if (allConnectors && allConnectors.length > 0) {
+        const resolved = resolveUpstreamPhase(connector, allConnectors, allItems);
+        if (resolved === "R") return '#FF4500';
+        if (resolved === "Y") return '#FFD700';
+        if (resolved === "B") return '#0000CD';
+    }
+
+    // Immediate-neighbour fallback for single-phase outgoing devices.
+    const freshSource = (allItems && connector.sourceItem?.uniqueID)
+        ? allItems.find(i => i.uniqueID === connector.sourceItem.uniqueID) || connector.sourceItem
+        : connector.sourceItem;
+    const local = getLocalOutgoingPhase(connector, freshSource);
+    if (local === "R") return '#FF4500';
+    if (local === "Y") return '#FFD700';
+    if (local === "B") return '#0000CD';
+
     const srcName = connector.sourceItem?.name;
     const dstName = connector.targetItem?.name;
     const srcKey = connector.sourcePointKey || '';
     const dstKey = connector.targetPointKey || '';
 
     if (srcName === "HTPN" || dstName === "HTPN") {
+        const pointPhase = parseHtpnPointPhase(srcKey) || parseHtpnPointPhase(dstKey);
+        if (pointPhase === "R") return '#FF0000';
+        if (pointPhase === "Y") return '#FFD700';
+        if (pointPhase === "B") return '#0000FF';
         if (srcKey.includes("R") || dstKey.includes("R")) return '#FF0000';
         if (srcKey.includes("Y") || dstKey.includes("Y")) return '#FFD700';
         if (srcKey.includes("B") || dstKey.includes("B")) return '#0000FF';
     }
 
     return theme === 'dark' ? '#FFFFFF' : '#000000';
+};
+
+const PHASE_COLORS: Record<string, string> = {
+    R: '#FF4500',
+    Y: '#FFD700',
+    B: '#0000CD',
+};
+
+const getLayoutIdForSldItem = (item?: { properties?: Array<Record<string, string>> }): string | undefined =>
+    item?.properties?.[0]?.['_layoutComponentId'];
+
+/**
+ * Phase color for a physical layout conduit route. Prefers an explicitly
+ * stored phase, then the matching SLD connector (which now carries
+ * device-derived phase even without a Source), resolved through the same
+ * upstream walk used by the SLD canvas.
+ */
+const getLayoutConnectionColor = (
+    conn: LayoutConnection,
+    sldConnectors: Connector[],
+    sldItems?: CanvasItem[]
+): string | null => {
+    const stored = (conn.properties?.phase || '').toUpperCase();
+    if (stored === 'R' || stored === 'Y' || stored === 'B') return PHASE_COLORS[stored];
+
+    if (sldConnectors.length === 0) return null;
+    const match = sldConnectors.find(sld => {
+        const srcLayoutId = getLayoutIdForSldItem(sld.sourceItem);
+        const dstLayoutId = getLayoutIdForSldItem(sld.targetItem);
+        return (srcLayoutId === conn.sourceId && dstLayoutId === conn.targetId) ||
+            (srcLayoutId === conn.targetId && dstLayoutId === conn.sourceId);
+    });
+    if (!match) return null;
+    const direct = match.currentValues?.['Phase'];
+    const resolved = (direct && PHASE_COLORS[direct] ? direct : resolveUpstreamPhase(match, sldConnectors, sldItems));
+    return PHASE_COLORS[resolved] || null;
 };
 
 interface LayoutCanvasProps {
@@ -86,6 +158,24 @@ interface LayoutCanvasProps {
     showWindows?: boolean;
     showRooms?: boolean;
     onSldConnectionResult?: (status: 'success' | 'error', message: string) => void;
+    /**
+     * Live cursor position in plan coordinates, or null when the pointer leaves
+     * the canvas. Reported upward so the status bar can live outside the Konva
+     * stage, next to the floor-plan tabs, rather than overlapping the drawing.
+     */
+    onCursorChange?: (point: Point | null) => void;
+    /** Opens the New Floor Plan dialog from the empty state. */
+    onRequestNewPlan?: () => void;
+    /**
+     * True when the right-hand properties panel is open, so canvas overlays
+     * (the OCR controls) can shift left instead of hiding underneath it.
+     */
+    inspectorOpen?: boolean;
+    /**
+     * True when the Load Summary card occupies the top-right corner, so the OCR
+     * panel drops below it instead of covering it.
+     */
+    loadSummaryVisible?: boolean;
 }
 
 const LOAD_CATEGORIES = new Set(['appliances', 'lighting', 'fans', 'others']);
@@ -136,7 +226,11 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
     showDoors = true,
     showWindows = true,
     showRooms = true,
-    onSldConnectionResult
+    onSldConnectionResult,
+    onCursorChange,
+    onRequestNewPlan,
+    inspectorOpen,
+    loadSummaryVisible
 }, ref) => {
     const stageRef = useRef<any>(null);
     const { theme, colors } = useTheme();
@@ -151,6 +245,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
         getCurrentFloorPlan,
         drawingState,
         setActiveTool,
+        setSelectedComponentType,
         addWall,
         updateWall,
         addRoom,
@@ -165,6 +260,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
         updateConnection,
         selectedElementIds,
         selectElement,
+        selectElements,
         clearSelection,
         deleteSelected,
         updateViewport,
@@ -211,6 +307,55 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
     const [containerSize, setContainerSize] = useState({ width: 800, height: 600 });
     const [connectionSource, setConnectionSource] = useState<string | null>(null);
     const [isCreatingSldConnection, setIsCreatingSldConnection] = useState(false);
+
+    /** True while a sidebar item is being dragged over the canvas. Drives the drop hint. */
+    const [isDragOver, setIsDragOver] = useState(false);
+
+    /**
+     * Live cursor position in world coordinates, for the status bar readout.
+     * Kept out of `hoverInfo` because that one only exists while drafting.
+     * Mirrored upward via onCursorChange so the status bar can render outside
+     * the canvas without re-rendering the Konva stage on every mouse move.
+     */
+    const reportCursor = useCallback((point: Point | null) => {
+        onCursorChange?.(point);
+    }, [onCursorChange]);
+
+    /**
+     * The snap target under the drafting cursor, if any. Rendered as a marker so
+     * the user can see they are about to join an existing corner or wall face
+     * before they commit the click.
+     */
+    const [activeSnap, setActiveSnap] = useState<{ point: Point; type: 'endpoint' | 'wall' } | null>(null);
+
+    /**
+     * Held-modifier mirror. Konva only gives us modifier flags on its own
+     * events, but wall drafting needs to know whether Shift is down while the
+     * pointer merely moves, and Space needs to temporarily switch to panning.
+     */
+    const [shiftHeld, setShiftHeld] = useState(false);
+    const [spaceHeld, setSpaceHeld] = useState(false);
+
+    /**
+     * Tool to restore when Space (temporary pan) is released.
+     * A ref, not state, so the keyup handler always sees the latest value
+     * without needing to re-bind the listener.
+     */
+    const toolBeforeSpaceRef = useRef<DrawingTool | null>(null);
+
+    /**
+     * Click handler shared by every selectable element.
+     *
+     * Shift+click extends the selection. The store has always supported
+     * multi-select, but every canvas click hardcoded single-select, so the
+     * capability was unreachable from the UI.
+     */
+    const handleElementClick = useCallback((id: string, e: any) => {
+        // Placing components should not also select what you clicked over.
+        if (drawingState.activeTool === 'component') return;
+        if (e) e.cancelBubble = true;
+        selectElement(id, Boolean(e?.evt?.shiftKey));
+    }, [drawingState.activeTool, selectElement]);
 
     // HUD State
     const [hoverInfo, setHoverInfo] = useState<{ x: number, y: number, text: string } | null>(null);
@@ -294,6 +439,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
     // Include ALL sheets to support cross-sheet connections
     const { sheets, addConnector } = useStore();
     const sldConnectors = sheets.flatMap(s => s.storedConnectors);
+    const sldItems = sheets.flatMap(s => s.canvasItems);
 
     const createSynchronizedPointSwitchBoardConnection = async (
         firstComponent: LayoutComponent,
@@ -444,6 +590,8 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
             targetPos: { x: number; y: number };
             key: string;
             color: string;
+            sourceId: string;
+            targetId: string;
         }> = [];
 
         for (let i = 0; i < sldConnectors.length; i++) {
@@ -462,12 +610,68 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                 sourcePos: srcPos,
                 targetPos: dstPos,
                 key: `${srcLayoutId}-${dstLayoutId}-${connector.sourcePointKey}-${connector.targetPointKey}-${i}`,
-                color: getSldConnectorColor(connector, theme)
+                color: getSldConnectorColor(connector, theme, sldConnectors, sldItems),
+                sourceId: srcLayoutId,
+                targetId: dstLayoutId
             });
         }
 
         return wires;
-    }, [currentPlan?.components, sldConnectors, showMagicWires, theme]);
+    }, [currentPlan?.components, sldConnectors, sldItems, showMagicWires, theme]);
+
+    // Connection highlight: when a placed component is selected, emphasize its
+    // incoming/outgoing wires (layout connections + magic SLD wires) and dim
+    // everything else so the path is easy to trace.
+    const connectionHighlight = useMemo(() => {
+        const empty = {
+            selectedComponentIds: [] as string[],
+            highlightedConnectionIds: new Set<string>(),
+            highlightedMagicWireKeys: new Set<string>(),
+            neighbourComponentIds: new Set<string>(),
+            hasHighlight: false
+        };
+        if (!currentPlan || selectedElementIds.length === 0) return empty;
+
+        const componentIds = new Set(currentPlan.components.map(c => c.id));
+        const selectedComponentIds = selectedElementIds.filter(id => componentIds.has(id));
+        if (selectedComponentIds.length === 0) return empty;
+        const selectedSet = new Set(selectedComponentIds);
+
+        const highlightedConnectionIds = new Set<string>();
+        const neighbourComponentIds = new Set<string>();
+        for (const conn of currentPlan.connections) {
+            const touchesSource = selectedSet.has(conn.sourceId);
+            const touchesTarget = selectedSet.has(conn.targetId);
+            if (touchesSource || touchesTarget) {
+                highlightedConnectionIds.add(conn.id);
+                // The "other end" of the wire — used to outline the neighbour
+                // component so the user sees from where to where it connects.
+                if (!selectedSet.has(conn.sourceId)) neighbourComponentIds.add(conn.sourceId);
+                if (!selectedSet.has(conn.targetId)) neighbourComponentIds.add(conn.targetId);
+            }
+        }
+
+        const highlightedMagicWireKeys = new Set<string>();
+        for (const wire of magicWires) {
+            if (selectedSet.has(wire.sourceId) || selectedSet.has(wire.targetId)) {
+                highlightedMagicWireKeys.add(wire.key);
+                if (!selectedSet.has(wire.sourceId)) neighbourComponentIds.add(wire.sourceId);
+                if (!selectedSet.has(wire.targetId)) neighbourComponentIds.add(wire.targetId);
+            }
+        }
+
+        const hasHighlight = highlightedConnectionIds.size > 0 || highlightedMagicWireKeys.size > 0;
+        // No wires for this item — keep the canvas as-is instead of dimming all.
+        if (!hasHighlight) return empty;
+
+        return {
+            selectedComponentIds,
+            highlightedConnectionIds,
+            highlightedMagicWireKeys,
+            neighbourComponentIds,
+            hasHighlight: true
+        };
+    }, [currentPlan, selectedElementIds, magicWires]);
 
     // Container ref for size
     const containerRef = useRef<HTMLDivElement>(null);
@@ -679,6 +883,106 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
         return { x, y };
     };
 
+    /**
+     * Every element on the plan that a marquee touches.
+     *
+     * Uses "touch" semantics (overlap, not containment) — see boundsIntersect.
+     * Rooms are the exception: they are large background fills, so requiring the
+     * marquee centre to fall inside them avoids selecting a whole room every
+     * time the user drags a small box over a socket that happens to sit in it.
+     */
+    const collectElementsInBox = useCallback((box: Bounds): string[] => {
+        if (!currentPlan) return [];
+
+        const ids: string[] = [];
+        const ppm = currentPlan.pixelsPerMeter || 50;
+
+        for (const wall of currentPlan.walls) {
+            const bounds = boundsFromPoints([wall.startPoint, wall.endPoint]);
+            // A perfectly axis-aligned wall has zero extent on one axis, so pad
+            // by half its thickness to keep it hit-testable.
+            if (bounds) {
+                const pad = Math.max(2, wall.thickness / 2);
+                if (boundsIntersect(box, {
+                    x1: bounds.x1 - pad,
+                    y1: bounds.y1 - pad,
+                    x2: bounds.x2 + pad,
+                    y2: bounds.y2 + pad
+                })) {
+                    ids.push(wall.id);
+                }
+            }
+        }
+
+        for (const door of currentPlan.doors) {
+            const half = Math.max(6, door.width / 2);
+            if (boundsIntersect(box, boundsAroundPoint(door.position, half, half))) {
+                ids.push(door.id);
+            }
+        }
+
+        for (const win of currentPlan.windows) {
+            const halfW = Math.max(6, win.width / 2);
+            const halfH = Math.max(6, win.height / 2);
+            if (boundsIntersect(box, boundsAroundPoint(win.position, halfW, halfH))) {
+                ids.push(win.id);
+            }
+        }
+
+        for (const comp of currentPlan.components) {
+            const def = LAYOUT_COMPONENT_DEFINITIONS[comp.type];
+            const size = def?.realSizeMm
+                ? getScaledComponentSize(comp.type, ppm)
+                : (def?.size ?? { width: 24, height: 24 });
+            if (boundsIntersect(box, boundsAroundPoint(comp.position, size.width / 2, size.height / 2))) {
+                ids.push(comp.id);
+            }
+        }
+
+        for (const textItem of currentPlan.textItems || []) {
+            const width = textItem.width ?? Math.max(20, textItem.text.length * (textItem.fontSize || 14) * 0.6);
+            const height = textItem.fontSize || 14;
+            if (boundsIntersect(box, {
+                x1: textItem.position.x,
+                y1: textItem.position.y,
+                x2: textItem.position.x + width,
+                y2: textItem.position.y + height
+            })) {
+                ids.push(textItem.id);
+            }
+        }
+
+        // Rooms: require the marquee centre to land inside the polygon.
+        const boxCenter = { x: (box.x1 + box.x2) / 2, y: (box.y1 + box.y2) / 2 };
+        for (const room of currentPlan.rooms) {
+            if (isPointInRoom(boxCenter, room)) {
+                ids.push(room.id);
+            }
+        }
+
+        return ids;
+    }, [currentPlan]);
+
+    /**
+     * Apply drafting aids to a raw cursor position.
+     *
+     * Order matters: an explicit angle constraint (Shift) wins over snapping,
+     * because the user asking for a clean 90° wall does not want it yanked a few
+     * pixels sideways onto a nearby corner.
+     */
+    const applyWallDraftingAids = useCallback((raw: Point, origin: Point | null): Point => {
+        if (origin && shiftHeld) {
+            return constrainWallAngle(origin, raw, 45);
+        }
+
+        if (currentPlan) {
+            const snap = resolveDraftingSnap(raw, currentPlan.walls, 14 / Math.max(scale, 0.1), 10 / Math.max(scale, 0.1));
+            if (snap) return snap.point;
+        }
+
+        return raw;
+    }, [currentPlan, shiftHeld, scale]);
+
     const projectPointToWall = (p: Point, wall: Wall): Point => {
         const ax = wall.startPoint.x;
         const ay = wall.startPoint.y;
@@ -706,10 +1010,12 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
 
     // Handle mouse down on stage
     const handleMouseDown = (e: any) => {
-        const point = getCanvasPoint(e);
+        const rawPoint = getCanvasPoint(e);
+        const point = rawPoint;
         const tool = drawingState.activeTool;
 
-        if (tool === 'pan') {
+        // Space-to-pan takes priority over whatever tool is active.
+        if (tool === 'pan' || spaceHeld) {
             // Pan is handled by draggable stage
             return;
         }
@@ -736,13 +1042,14 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
 
         // Selection Tool Logic
         if (tool === 'select') {
-            // If clicked on stage (background) or grid background, start box selection or clear selection
+            // Clicking empty canvas starts a rubber-band marquee. The selection
+            // itself is not cleared yet: that happens on mouse-up only if the
+            // drag turned out to be a click (zero-area box). Clearing here would
+            // make Shift+drag-to-add impossible.
             const isBackground = e.target === e.target.getStage() || e.target.name() === 'grid-background';
             if (isBackground) {
-                clearSelection();
                 setSelectionBox({ start: point, end: point });
             }
-            return;
             return;
         }
 
@@ -763,13 +1070,15 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
 
         if (tool === 'wall') {
             if (!isDrawing) {
+                // Snap the start point too, so chains begin exactly on corners.
+                const start = applyWallDraftingAids(rawPoint, null);
                 setIsDrawing(true);
-                setCurrentPath([point]);
+                setCurrentPath([start]);
             } else {
                 // Complete wall
                 if (currentPath.length > 0) {
                     const start = currentPath[0];
-                    const end = point;
+                    const end = applyWallDraftingAids(rawPoint, start);
 
                     // Prevent zero length walls
                     if (Math.hypot(end.x - start.x, end.y - start.y) > 5) {
@@ -840,22 +1149,36 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
             let rotation = 0;
 
             // Smart Snap to Wall
-            // If we are close to a wall, snap to it and align rotation
+            // If we are close to a wall, snap to it and align rotation.
+            // Room-side fittings (bulb perpendicular; tube, boards, AC and
+            // geyser offset into the served room) seat off the wall face —
+            // dragging across a partition wall re-seats them to the new side.
             if (currentPlan) {
                 const snapInfo = snapToWall(point, currentPlan.walls, 25); // 25px tolerance
                 if (snapInfo) {
-                    placePos = snapInfo.snapPoint;
+                    const compType = drawingState.selectedComponentType;
+                    if (needsWallSeating(compType)) {
+                        const ppm = currentPlan.pixelsPerMeter || 50;
+                        const roomHit = findRoomForPoint(point, currentPlan.rooms)
+                            ?? findRoomForPoint(snapInfo.snapPoint, currentPlan.rooms);
+                        const oriented = orientComponentOnWall(compType, snapInfo.snapPoint, snapInfo.wall, {
+                            roomInterior: roomHit ? getRoomInteriorPoint(roomHit.room) : null,
+                            approach: { x: point.x - snapInfo.snapPoint.x, y: point.y - snapInfo.snapPoint.y },
+                            pixelsPerMeter: ppm
+                        });
+                        placePos = oriented.position;
+                        rotation = oriented.rotation;
+                    } else {
+                        placePos = snapInfo.snapPoint;
 
-                    // Calculate wall angle
-                    const wallAngle = Math.atan2(
-                        snapInfo.wall.endPoint.y - snapInfo.wall.startPoint.y,
-                        snapInfo.wall.endPoint.x - snapInfo.wall.startPoint.x
-                    ) * 180 / Math.PI;
+                        // Calculate wall angle
+                        const wallAngle = Math.atan2(
+                            snapInfo.wall.endPoint.y - snapInfo.wall.startPoint.y,
+                            snapInfo.wall.endPoint.x - snapInfo.wall.startPoint.x
+                        ) * 180 / Math.PI;
 
-                    rotation = wallAngle;
-
-                    // Optional: Offset from wall center based on component depth?
-                    // For now, center on wall line is standard for symbols like switches
+                        rotation = wallAngle;
+                    }
                 }
             }
 
@@ -864,7 +1187,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                 position: placePos,
                 rotation: rotation,
                 properties: {},
-                roomId: currentPlan ? findRoomAtPoint(placePos, currentPlan.rooms)?.id : undefined
+                roomId: currentPlan ? findRoomForPoint(placePos, currentPlan.rooms)?.room.id : undefined
             });
             return;
         }
@@ -933,6 +1256,31 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
         const point = getCanvasPoint(e);
         const tool = drawingState.activeTool;
 
+        // Status-bar coordinate readout, always live.
+        reportCursor(point);
+
+        // Rubber-band marquee in progress.
+        if (selectionBox) {
+            setSelectionBox({ start: selectionBox.start, end: point });
+            setHoverInfo(null);
+            return;
+        }
+
+        // Snap preview for the drafting tools. Shown even before the first click
+        // so the user knows where a wall will begin, not just where it will end.
+        if ((tool === 'wall' || tool === 'door' || tool === 'window' || tool === 'component') && currentPlan) {
+            if (tool === 'wall' && isDrawing && shiftHeld) {
+                // Angle-constrained: no snap marker, the constraint is the aid.
+                setActiveSnap(null);
+            } else {
+                const tolerance = 14 / Math.max(scale, 0.1);
+                const snap = resolveDraftingSnap(point, currentPlan.walls, tolerance, tolerance * 0.75);
+                setActiveSnap(snap);
+            }
+        } else if (activeSnap) {
+            setActiveSnap(null);
+        }
+
         if (!isDrawing) {
             setHoverInfo(null);
             return;
@@ -940,7 +1288,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
 
         if (tool === 'wall' && currentPath.length > 0) {
             const start = currentPath[0];
-            const end = point;
+            const end = applyWallDraftingAids(point, start);
             setCurrentPath([start, end]);
 
             // Update HUD
@@ -948,7 +1296,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
             const angle = Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI;
             const normalizedAngle = (angle < 0 ? angle + 360 : angle).toFixed(1);
             const unit = currentPlan?.measurementUnit || 'm';
-            const label = `${getDistanceLabelWithUnit(pxLen, currentPlan?.pixelsPerMeter || 50, unit)} | ${normalizedAngle}°`;
+            const label = `${getDistanceLabelWithUnit(pxLen, currentPlan?.pixelsPerMeter || 50, unit)} | ${normalizedAngle}°${shiftHeld ? ' · 45° lock' : ''}`;
 
             // Screen coordinates for HUD
             const stage = stageRef.current;
@@ -959,6 +1307,22 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                         x: pointerPos.x + 20,
                         y: pointerPos.y + 20,
                         text: label
+                    });
+                }
+            }
+        } else if (tool === 'room' && currentPath.length > 0) {
+            // Live preview of the segment being added to the polygon, plus a
+            // running vertex count so the user knows when close is possible.
+            const stage = stageRef.current;
+            if (stage) {
+                const pointerPos = stage.getPointerPosition();
+                if (pointerPos) {
+                    setHoverInfo({
+                        x: pointerPos.x + 20,
+                        y: pointerPos.y + 20,
+                        text: currentPath.length >= 3
+                            ? `${currentPath.length} corners · double-click or Enter to close`
+                            : `${currentPath.length} corner${currentPath.length === 1 ? '' : 's'} · need 3 to close`
                     });
                 }
             }
@@ -988,35 +1352,194 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
         }
     };
 
-    // Handle double click (complete room polygon)
-    const handleDoubleClick = (e: any) => {
-        if (drawingState.activeTool === 'room' && currentPath.length >= 3) {
-            addRoom({
-                name: `Room ${(currentPlan?.rooms.length || 0) + 1}`,
-                polygon: currentPath,
-                type: 'other'
-            });
-            setIsDrawing(false);
-            setCurrentPath([]);
+    /**
+     * Finish a rubber-band marquee.
+     *
+     * A near-zero-area box means the user clicked rather than dragged, which is
+     * the signal to clear the selection. This is why mouse-down no longer clears
+     * eagerly — doing so broke Shift+drag additive selection.
+     */
+    const handleMouseUp = (e: any) => {
+        if (!selectionBox) return;
+
+        const box = normalizeBounds(selectionBox.start, selectionBox.end);
+        setSelectionBox(null);
+
+        // Threshold in world units, scale-corrected so the feel is the same at
+        // any zoom level.
+        const clickThreshold = 16 / Math.max(scale, 0.1);
+        const isClick = boundsArea(box) < clickThreshold * clickThreshold;
+
+        if (isClick) {
+            clearSelection();
+            return;
+        }
+
+        const additive = Boolean(e?.evt?.shiftKey) || shiftHeld;
+        const ids = collectElementsInBox(box);
+
+        if (ids.length > 0) {
+            selectElements(ids, additive);
+        } else if (!additive) {
+            clearSelection();
         }
     };
 
-    // Handle key down
+    /**
+     * Close the in-progress room polygon.
+     *
+     * Shared by double-click and Enter. Double-click alone was undiscoverable
+     * and awkward to hit accurately at low zoom.
+     */
+    const completeRoomPolygon = useCallback(() => {
+        if (currentPath.length < 3) return;
+
+        addRoom({
+            name: `Room ${(currentPlan?.rooms.length || 0) + 1}`,
+            polygon: currentPath,
+            type: 'other'
+        });
+        setIsDrawing(false);
+        setCurrentPath([]);
+    }, [addRoom, currentPath, currentPlan?.rooms.length]);
+
+    // Handle double click (complete room polygon)
+    const handleDoubleClick = (_e: any) => {
+        if (drawingState.activeTool === 'room' && currentPath.length >= 3) {
+            completeRoomPolygon();
+        }
+    };
+
+    /**
+     * Cancel whatever is in progress, one step at a time.
+     *
+     * Escape used to always jump back to the select tool, which meant losing
+     * your place in the middle of drawing a long wall chain. Now the first
+     * Escape abandons the current geometry and keeps the tool, and a second
+     * Escape (with nothing in progress) returns to select.
+     */
+    const cancelCurrentAction = useCallback(() => {
+        if (isDrawing || currentPath.length > 0) {
+            setIsDrawing(false);
+            setCurrentPath([]);
+            setConnectionSource(null);
+            setHoverInfo(null);
+            return;
+        }
+
+        if (selectionBox) {
+            setSelectionBox(null);
+            return;
+        }
+
+        if (drawingState.activeTool !== 'select') {
+            setActiveTool('select');
+            // Also disarm component placement, otherwise re-picking the select
+            // tool later could resume dropping the previously chosen symbol.
+            setSelectedComponentType(undefined);
+            return;
+        }
+
+        clearSelection();
+    }, [
+        isDrawing,
+        currentPath.length,
+        selectionBox,
+        drawingState.activeTool,
+        setActiveTool,
+        setSelectedComponentType,
+        clearSelection
+    ]);
+
+    // Canvas-local keyboard handling.
+    //
+    // Deliberately narrow: element deletion, undo/redo, copy/paste and tool
+    // switching all live in LayoutDesigner so there is a single owner for each
+    // shortcut. This handler previously also bound Delete, which double-fired
+    // with LayoutDesigner's handler and had no input-focus guard, so pressing
+    // Backspace while typing in a text box deleted canvas geometry.
     useEffect(() => {
+        const isTypingTarget = (target: EventTarget | null) => {
+            const el = target as HTMLElement | null;
+            if (!el) return false;
+            const tag = el.tagName?.toLowerCase();
+            return tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
+        };
+
         const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Delete' || e.key === 'Backspace') {
-                deleteSelected();
+            if (isTypingTarget(e.target)) return;
+
+            if (e.key === 'Shift') {
+                setShiftHeld(true);
+                return;
             }
+
+            // Space = temporary pan, the convention in every drafting tool.
+            // Remembers the previous tool so releasing Space restores it.
+            if (e.code === 'Space' && !e.repeat) {
+                e.preventDefault();
+                setSpaceHeld(true);
+                if (drawingState.activeTool !== 'pan') {
+                    toolBeforeSpaceRef.current = drawingState.activeTool;
+                    setActiveTool('pan');
+                }
+                return;
+            }
+
             if (e.key === 'Escape') {
-                setIsDrawing(false);
-                setCurrentPath([]);
-                setActiveTool('select');
+                e.preventDefault();
+                cancelCurrentAction();
+                return;
+            }
+
+            if (e.key === 'Enter' && drawingState.activeTool === 'room' && currentPath.length >= 3) {
+                e.preventDefault();
+                completeRoomPolygon();
+            }
+        };
+
+        const handleKeyUp = (e: KeyboardEvent) => {
+            if (e.key === 'Shift') {
+                setShiftHeld(false);
+                return;
+            }
+
+            if (e.code === 'Space') {
+                setSpaceHeld(false);
+                const previous = toolBeforeSpaceRef.current;
+                toolBeforeSpaceRef.current = null;
+                if (previous) setActiveTool(previous);
+            }
+        };
+
+        // Releasing the modifier while the window is unfocused would otherwise
+        // leave us stuck in pan mode.
+        const handleBlur = () => {
+            setShiftHeld(false);
+            if (spaceHeld) {
+                setSpaceHeld(false);
+                const previous = toolBeforeSpaceRef.current;
+                toolBeforeSpaceRef.current = null;
+                if (previous) setActiveTool(previous);
             }
         };
 
         window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [deleteSelected, setActiveTool]);
+        window.addEventListener('keyup', handleKeyUp);
+        window.addEventListener('blur', handleBlur);
+        return () => {
+            window.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('keyup', handleKeyUp);
+            window.removeEventListener('blur', handleBlur);
+        };
+    }, [
+        cancelCurrentAction,
+        completeRoomPolygon,
+        currentPath.length,
+        drawingState.activeTool,
+        setActiveTool,
+        spaceHeld
+    ]);
 
     // Render grid
     // Render grid - DISABLED (User requested removal)
@@ -1192,7 +1715,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                 : '';
 
             return (
-                <Group key={room.id} onClick={() => selectElement(room.id)}>
+                <Group key={room.id} onClick={(e) => handleElementClick(room.id, e)}>
                     <Line
                         points={[...points, points[0], points[1]]}
                         fill={fillColor}
@@ -1285,7 +1808,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                         stroke={isSelected ? '#3b82f6' : (theme === 'dark' ? '#e5e7eb' : '#1f2937')}
                         strokeWidth={wall.thickness}
                         lineCap="butt"
-                        onClick={() => { if (drawingState.activeTool !== 'component') selectElement(wall.id); }}
+                        onClick={(e) => handleElementClick(wall.id, e)}
                         draggable={drawingState.activeTool === 'select'}
                         onDragStart={() => takeSnapshot()}
                         onDragEnd={(e) => {
@@ -1431,7 +1954,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                     x={door.position.x}
                     y={door.position.y}
                     rotation={rotation}
-                    onClick={() => { if (drawingState.activeTool !== 'component') selectElement(door.id); }}
+                    onClick={(e) => handleElementClick(door.id, e)}
                     draggable={drawingState.activeTool === 'select'}
                     dragBoundFunc={(pos) => {
                         // Slide-on-Wall Logic
@@ -1688,7 +2211,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                     fill={theme === 'dark' ? '#60a5fa' : '#93c5fd'}
                     stroke={isSelected ? '#3b82f6' : '#3b82f6'}
                     strokeWidth={isSelected ? 3 : 1}
-                    onClick={() => { if (drawingState.activeTool !== 'component') selectElement(win.id); }}
+                    onClick={(e) => handleElementClick(win.id, e)}
                     draggable={drawingState.activeTool === 'select'}
                     dragBoundFunc={(pos) => {
                         const worldX = (pos.x - position.x) / scale;
@@ -1855,16 +2378,6 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
             });
     };
 
-    // Keyboard shortcuts
-    useEffect(() => {
-        const handleKeyDown = (_e: KeyboardEvent) => {
-            return;
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [selectedElementIds]);
-
     // Render connections (wires/conduits)
     const renderConnections = (renderSelected: boolean) => {
         if (!currentPlan) return null;
@@ -1873,7 +2386,14 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
 
         return targets.map(conn => {
             const isSelected = selectedElementIds.includes(conn.id);
-            const color = conn.type === 'power' ? '#dc2626' : (conn.type === 'control' ? '#2563eb' : '#4b5563');
+            const baseColor = conn.type === 'power' ? '#dc2626' : (conn.type === 'control' ? '#2563eb' : '#4b5563');
+            // Phase wins over the type color when known (stored phase or the
+            // matching SLD connector's HTPN-derived phase, even with no Source).
+            const color = getLayoutConnectionColor(conn, sldConnectors, sldItems) || baseColor;
+
+            // Highlight wires touching the selected component(s); dim the rest.
+            const isRelated = connectionHighlight.highlightedConnectionIds.has(conn.id);
+            const isDimmed = connectionHighlight.hasHighlight && !isRelated && !isSelected;
 
             // Determine path based on renderType
             // Keep original points for source/target refs
@@ -1922,17 +2442,33 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
             }
 
             return (
-                <Group key={conn.id} onClick={() => selectElement(conn.id)}>
+                <Group key={conn.id} onClick={(e) => handleElementClick(conn.id, e)} opacity={isDimmed ? 0.18 : 1}>
+                    {/* Glow under highlighted wires so they pop against the plan */}
+                    {isRelated && (
+                        <Line
+                            points={renderPoints}
+                            stroke={color}
+                            strokeWidth={isSelected ? 9 : 8}
+                            lineCap="round"
+                            lineJoin="round"
+                            tension={tension}
+                            bezier={isBezier}
+                            opacity={0.25}
+                            listening={false}
+                        />
+                    )}
                     {/* Main Wire Line */}
                     <Line
                         points={renderPoints}
                         stroke={color}
-                        strokeWidth={isSelected ? 3 : 2}
+                        strokeWidth={isRelated ? (isSelected ? 5 : 4) : (isSelected ? 3 : 2)}
                         lineCap="round"
                         lineJoin="round"
                         tension={tension}
                         bezier={isBezier}
-                        opacity={0.8}
+                        opacity={isRelated ? 1 : (isDimmed ? 0.35 : 0.8)}
+                        shadowColor={isRelated ? color : undefined}
+                        shadowBlur={isRelated ? 6 : 0}
                     />
 
                     {/* Shadow/Highlight for depth */}
@@ -1961,8 +2497,11 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                             key={i}
                             x={p.x}
                             y={p.y}
-                            radius={3}
+                            radius={isRelated ? 4.5 : 3}
                             fill={color}
+                            opacity={isDimmed ? 0.35 : 1}
+                            shadowColor={isRelated ? color : undefined}
+                            shadowBlur={isRelated ? 6 : 0}
                         />
                     ))}
                 </Group>
@@ -1979,6 +2518,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
         return targets.map(comp => {
             const def = LAYOUT_COMPONENT_DEFINITIONS[comp.type];
             const isSelected = selectedElementIds.includes(comp.id);
+            const isNeighbour = connectionHighlight.neighbourComponentIds.has(comp.id);
             const image = componentImages[comp.type];
 
             // Use calibrated real-world size if available, otherwise fall back to def.size
@@ -1992,7 +2532,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                     x={comp.position.x}
                     y={comp.position.y}
                     rotation={comp.rotation}
-                    onClick={() => selectElement(comp.id)}
+                    onClick={(e) => handleElementClick(comp.id, e)}
                     onContextMenu={(e) => {
                         e.evt.preventDefault();
                         e.cancelBubble = true;
@@ -2015,8 +2555,48 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                     onDragEnd={(e) => {
                         e.cancelBubble = true;
                         const { updateComponent } = useLayoutStore.getState();
+                        const rawPos = { x: e.target.x(), y: e.target.y() };
+
+                        // Room-side fittings re-seat off the wall face toward the
+                        // room they were dragged toward — crossing a partition
+                        // wall moves them to the new side (flipping types also
+                        // turn to face it; labelled units stay upright).
+                        let nextPos = rawPos;
+                        let nextRotation = comp.rotation;
+
+                        if (currentPlan) {
+                            const snapInfo = snapToWall(rawPos, currentPlan.walls, 25);
+                            if (snapInfo) {
+                                if (needsWallSeating(comp.type)) {
+                                    const roomHit = findRoomForPoint(rawPos, currentPlan.rooms)
+                                        ?? findRoomForPoint(snapInfo.snapPoint, currentPlan.rooms)
+                                        ?? (comp.roomId ? (() => {
+                                            const known = currentPlan.rooms.find(r => r.id === comp.roomId);
+                                            return known ? { room: known } as any : null;
+                                        })() : null);
+                                    const oriented = orientComponentOnWall(comp.type, snapInfo.snapPoint, snapInfo.wall, {
+                                        roomInterior: roomHit ? getRoomInteriorPoint(roomHit.room) : null,
+                                        approach: { x: rawPos.x - snapInfo.snapPoint.x, y: rawPos.y - snapInfo.snapPoint.y },
+                                        pixelsPerMeter: currentPlan.pixelsPerMeter || 50
+                                    });
+                                    nextPos = oriented.position;
+                                    nextRotation = oriented.rotation;
+                                } else {
+                                    nextPos = snapInfo.snapPoint;
+                                    nextRotation = Math.atan2(
+                                        snapInfo.wall.endPoint.y - snapInfo.wall.startPoint.y,
+                                        snapInfo.wall.endPoint.x - snapInfo.wall.startPoint.x
+                                    ) * 180 / Math.PI;
+                                }
+                            }
+                        }
+
                         updateComponent(comp.id, {
-                            position: { x: e.target.x(), y: e.target.y() }
+                            position: nextPos,
+                            rotation: nextRotation,
+                            // Keep the room association truthful after a move,
+                            // otherwise per-room load totals drift out of date.
+                            roomId: currentPlan ? findRoomForPoint(nextPos, currentPlan.rooms)?.room.id : comp.roomId
                         });
                     }}
                 >
@@ -2038,6 +2618,22 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                                         />
                                     )
                                 }
+                                {/* Neighbour glow: directly wired to the selection */}
+                                {
+                                    !isSelected && isNeighbour && (
+                                        <Rect
+                                            x={-sz.width / 2 - 4}
+                                            y={-sz.height / 2 - 4}
+                                            width={sz.width + 8}
+                                            height={sz.height + 8}
+                                            stroke="#f59e0b"
+                                            strokeWidth={2}
+                                            cornerRadius={4}
+                                            dash={[6, 3]}
+                                            listening={false}
+                                        />
+                                    )
+                                }
                                 <KonvaImage
                                     image={image}
                                     width={sz.width}
@@ -2054,7 +2650,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                                 text={def?.symbol ?? '?'}
                                 fontSize={16}
                                 fontStyle="bold"
-                                fill={isSelected ? '#3b82f6' : (theme === 'dark' ? '#e5e7eb' : '#374151')}
+                                fill={isSelected ? '#3b82f6' : (isNeighbour ? '#f59e0b' : (theme === 'dark' ? '#e5e7eb' : '#374151'))}
                                 align="center"
                             />
                         )}
@@ -2086,6 +2682,8 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
 
         return magicWires.map((wire, globalIndex) => {
             const { sourcePos, targetPos, key, color } = wire;
+            const isRelated = connectionHighlight.highlightedMagicWireKeys.has(key);
+            const isDimmed = connectionHighlight.hasHighlight && !isRelated;
 
             // Calculate basic geometry
             const midX = (sourcePos.x + targetPos.x) / 2;
@@ -2157,7 +2755,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                 const points = [sourcePos.x, sourcePos.y, cpX, cpY, targetPos.x, targetPos.y];
 
                 return (
-                    <Group key={key}>
+                    <Group key={key} opacity={isDimmed ? 0.15 : 1}>
                         {/* Shadow for subtle depth */}
                         <Line
                             points={points}
@@ -2172,16 +2770,19 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                         <Line
                             points={points}
                             stroke={color}
-                            strokeWidth={1.2}
+                            strokeWidth={isRelated ? 3 : 1.2}
                             lineCap="round"
                             lineJoin="round"
                             tension={0.5}
                             bezier={true}
-                            dash={[6, 4]}
+                            dash={isRelated ? undefined : [6, 4]}
+                            shadowColor={isRelated ? color : undefined}
+                            shadowBlur={isRelated ? 8 : 0}
+                            opacity={isRelated ? 1 : (isDimmed ? 0.4 : 0.9)}
                         />
                         {/* Connection dots */}
-                        <Circle x={sourcePos.x} y={sourcePos.y} radius={2.5} fill={color} />
-                        <Circle x={targetPos.x} y={targetPos.y} radius={2.5} fill={color} />
+                        <Circle x={sourcePos.x} y={sourcePos.y} radius={isRelated ? 4 : 2.5} fill={color} />
+                        <Circle x={targetPos.x} y={targetPos.y} radius={isRelated ? 4 : 2.5} fill={color} />
                     </Group>
                 );
             }
@@ -2196,7 +2797,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
             const points = [sourcePos.x, sourcePos.y, cpX, cpY, targetPos.x, targetPos.y];
 
             return (
-                <Group key={key}>
+                <Group key={key} opacity={isDimmed ? 0.15 : 1}>
                     {/* Shadow for subtle depth */}
                     <Line
                         points={points}
@@ -2211,16 +2812,19 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                     <Line
                         points={points}
                         stroke={color}
-                        strokeWidth={1.2}
+                        strokeWidth={isRelated ? 3 : 1.2}
                         lineCap="round"
                         lineJoin="round"
                         tension={0.5}
                         bezier={true}
-                        dash={[6, 4]}
+                        dash={isRelated ? undefined : [6, 4]}
+                        shadowColor={isRelated ? color : undefined}
+                        shadowBlur={isRelated ? 8 : 0}
+                        opacity={isRelated ? 1 : (isDimmed ? 0.4 : 0.9)}
                     />
                     {/* Connection dots */}
-                    <Circle x={sourcePos.x} y={sourcePos.y} radius={2.5} fill={color} />
-                    <Circle x={targetPos.x} y={targetPos.y} radius={2.5} fill={color} />
+                    <Circle x={sourcePos.x} y={sourcePos.y} radius={isRelated ? 4 : 2.5} fill={color} />
+                    <Circle x={targetPos.x} y={targetPos.y} radius={isRelated ? 4 : 2.5} fill={color} />
                 </Group>
             );
         }).filter(Boolean);
@@ -2245,8 +2849,9 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                     fill={textItem.color || (theme === 'dark' ? '#ffffff' : '#000000')}
                     align={textItem.align || 'left'}
                     width={textItem.width}
+                    rotation={textItem.rotation || 0}
                     draggable={drawingState.activeTool === 'select'}
-                    onClick={() => { if (drawingState.activeTool !== 'component') selectElement(textItem.id); }}
+                    onClick={(e) => handleElementClick(textItem.id, e)}
                     onDragStart={() => takeSnapshot()}
                     onDragEnd={(e) => {
                         const newPos = { x: e.target.x(), y: e.target.y() };
@@ -2309,21 +2914,46 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
         return null;
     };
 
-    const cursor = DRAWING_TOOL_CURSORS[drawingState.activeTool];
+    // Cursor reflects the effective tool. `component` mode gets a crosshair
+    // rather than 'copy': the copy cursor implies a clipboard paste, not
+    // placement, and it obscured the exact point being clicked.
+    const cursor = drawingState.activeTool === 'component'
+        ? 'crosshair'
+        : DRAWING_TOOL_CURSORS[drawingState.activeTool];
 
     if (!currentPlan) {
+        // Empty state. Previously two lines of grey text with no affordance —
+        // the only way forward was to find the small "+" in the bottom bar.
         return (
             <div
                 ref={containerRef}
                 className="w-full h-full flex items-center justify-center"
                 style={{ backgroundColor: colors.canvasBackground }}
             >
-                <div className="text-center p-8">
-                    <p className="text-lg mb-4" style={{ color: colors.text }}>
-                        No floor plan selected
+                <div className="max-w-sm p-8 text-center" style={{ color: colors.text }}>
+                    <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl bg-blue-500/15 text-blue-500">
+                        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M3 21V5a2 2 0 0 1 2-2h11l5 5v13a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+                            <path d="M16 3v5h5M8 13h8M8 17h5" />
+                        </svg>
+                    </div>
+
+                    <p className="text-base font-semibold">Start a floor plan</p>
+                    <p className="mt-1 text-sm opacity-60">
+                        Upload an architectural drawing to trace and auto-detect walls and rooms,
+                        or start from a blank canvas.
                     </p>
-                    <p className="text-sm opacity-60" style={{ color: colors.text }}>
-                        Create a new floor plan or upload an image to get started
+
+                    <button
+                        type="button"
+                        onClick={onRequestNewPlan}
+                        className="mt-4 rounded-lg bg-blue-500 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-600"
+                    >
+                        Add floor plan
+                    </button>
+
+                    <p className="mt-4 text-[11px] opacity-45">
+                        Tip: calibrate the scale afterwards so areas and cable lengths are accurate.
                     </p>
                 </div>
             </div>
@@ -2333,11 +2963,50 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
     // Handle drop of staging components
     const handleDrop = (e: React.DragEvent) => {
         e.preventDefault();
+        setIsDragOver(false);
         const stage = stageRef.current?.getStage();
         if (!stage) return;
 
         try {
-            const data = JSON.parse(e.dataTransfer.getData('application/json'));
+            const raw = e.dataTransfer.getData('application/json');
+            if (!raw) return;
+            const data = JSON.parse(raw);
+
+            const rect = containerRef.current?.getBoundingClientRect();
+            if (!rect) return;
+
+            const dropX = (e.clientX - rect.left - position.x) / scale;
+            const dropY = (e.clientY - rect.top - position.y) / scale;
+
+            // Palette drag. The library previously only supported click-then-click
+            // placement, while the "Unplaced" tab supported drag-and-drop — two
+            // different interactions for the same outcome, in the same sidebar.
+            if (data._isLibraryComponent && data.type) {
+                let placePos = { x: dropX, y: dropY };
+                let rotation = 0;
+
+                // Same wall snapping as click placement, so a dragged switch
+                // lands flush on the wall and inherits its angle.
+                if (currentPlan) {
+                    const snapInfo = snapToWall(placePos, currentPlan.walls, 25);
+                    if (snapInfo) {
+                        placePos = snapInfo.snapPoint;
+                        rotation = Math.atan2(
+                            snapInfo.wall.endPoint.y - snapInfo.wall.startPoint.y,
+                            snapInfo.wall.endPoint.x - snapInfo.wall.startPoint.x
+                        ) * 180 / Math.PI;
+                    }
+                }
+
+                addComponent({
+                    type: data.type as LayoutComponentType,
+                    position: placePos,
+                    rotation,
+                    properties: {},
+                    roomId: currentPlan ? findRoomForPoint(placePos, currentPlan.rooms)?.room.id : undefined
+                });
+                return;
+            }
 
             // Check if this is a staging component
             if (data._isStagingComponent) {
@@ -2348,13 +3017,6 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                     console.warn('[LayoutCanvas] Staging component already placed:', stagingId);
                     return;
                 }
-
-                // Get drop position in canvas coordinates
-                const rect = containerRef.current?.getBoundingClientRect();
-                if (!rect) return;
-
-                const dropX = (e.clientX - rect.left - position.x) / scale;
-                const dropY = (e.clientY - rect.top - position.y) / scale;
 
                 // Create the component with its existing ID
                 const newComponent: LayoutComponent = {
@@ -2379,22 +3041,6 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                 if (stagingId) {
                     removeStagingComponent(stagingId);
                     console.log('[LayoutCanvas] Staging component placed:', stagingId);
-
-                    // Update the linked SLD item with the Layout component ID (backlink)
-                    if (data.sldItemId) {
-                        try {
-                            const sldStore = useStore.getState();
-                            const sldItem = sldStore.sheets
-                                .flatMap(s => s.canvasItems)
-                                .find(i => i.uniqueID === data.sldItemId);
-                            if (sldItem && !sldItem.properties?.[0]?.['_layoutComponentId']) {
-                                // Note: We don't need to update SLD item here as it should already have _layoutComponentId
-                                // The sync engine sets _layoutComponentId when creating SLD items from Layout
-                            }
-                        } catch (e) {
-                            console.warn('[LayoutCanvas] Failed to check SLD backlink', e);
-                        }
-                    }
                 }
             }
         } catch (error) {
@@ -2405,6 +3051,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
     const handleDragOver = (e: React.DragEvent) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'move';
+        if (!isDragOver) setIsDragOver(true);
     };
 
     return (
@@ -2417,16 +3064,26 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
             }}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
+            onDragLeave={(e) => {
+                // Only clear when the pointer truly leaves the container, not
+                // when it crosses onto a child node.
+                if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+                setIsDragOver(false);
+            }}
         >
-            {/* Drawing instructions */}
-            <div className="absolute top-2 left-1/2 transform -translate-x-1/2 z-10 px-3 py-1 rounded-full text-xs"
-                style={{
-                    backgroundColor: 'rgba(0,0,0,0.5)',
-                    color: '#fff'
-                }}
-            >
-                {DRAWING_TOOL_INSTRUCTIONS[drawingState.activeTool]}
-            </div>
+            {/* Drop hint. Without this the canvas gave no feedback that a dragged
+                palette item could be released here. */}
+            {isDragOver && (
+                <div className="pointer-events-none absolute inset-3 z-20 rounded-xl border-2 border-dashed border-blue-500/70 bg-blue-500/5">
+                    <span className="absolute left-1/2 top-3 -translate-x-1/2 rounded-full bg-blue-500 px-3 py-1 text-[11px] font-medium text-white shadow">
+                        Drop to place on this floor plan
+                    </span>
+                </div>
+            )}
+
+            {/* Drawing instructions used to sit at top-centre, directly underneath
+                the floating toolbar which occupies the same spot — it was clipped
+                and unreadable. It now lives in the status bar at the bottom. */}
 
             <Stage
                 ref={stageRef}
@@ -2440,6 +3097,15 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
                 onWheel={handleWheel}
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
+                onMouseUp={handleMouseUp}
+                onMouseLeave={() => {
+                    // Finish any marquee that ends outside the canvas, otherwise
+                    // it would stay stuck on screen until the next click.
+                    if (selectionBox) handleMouseUp(null);
+                    reportCursor(null);
+                    setActiveSnap(null);
+                    setHoverInfo(null);
+                }}
                 onDblClick={handleDoubleClick}
                 onDragEnd={(e) => {
                     if (e.target !== e.target.getStage()) return;
@@ -2531,6 +3197,47 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
 
                     {/* Current drawing path */}
                     {renderDrawingPath()}
+
+                    {/* Snap indicator — shows what the next click will attach to */}
+                    {activeSnap && (
+                        <Group listening={false}>
+                            {activeSnap.type === 'endpoint' ? (
+                                // Square marker = existing wall corner (exact join)
+                                <Rect
+                                    x={activeSnap.point.x - 6 / scale}
+                                    y={activeSnap.point.y - 6 / scale}
+                                    width={12 / scale}
+                                    height={12 / scale}
+                                    stroke="#f59e0b"
+                                    strokeWidth={2 / scale}
+                                />
+                            ) : (
+                                // Circle marker = somewhere along a wall face (T-junction)
+                                <Circle
+                                    x={activeSnap.point.x}
+                                    y={activeSnap.point.y}
+                                    radius={6 / scale}
+                                    stroke="#22d3ee"
+                                    strokeWidth={2 / scale}
+                                />
+                            )}
+                        </Group>
+                    )}
+
+                    {/* Rubber-band selection marquee */}
+                    {selectionBox && (
+                        <Rect
+                            x={Math.min(selectionBox.start.x, selectionBox.end.x)}
+                            y={Math.min(selectionBox.start.y, selectionBox.end.y)}
+                            width={Math.abs(selectionBox.end.x - selectionBox.start.x)}
+                            height={Math.abs(selectionBox.end.y - selectionBox.start.y)}
+                            fill="rgba(59, 130, 246, 0.12)"
+                            stroke="#3b82f6"
+                            strokeWidth={1 / scale}
+                            dash={[4 / scale, 3 / scale]}
+                            listening={false}
+                        />
+                    )}
                 </Layer>
             </Stage>
 
@@ -2671,7 +3378,7 @@ export const LayoutCanvas = forwardRef<LayoutCanvasRef, LayoutCanvasProps>(({
 
             {currentPlan?.ocr?.enabled && (
                 <div
-                    className="absolute top-12 right-3 z-40 rounded-lg border shadow-lg p-3 w-[280px]"
+                    className={`absolute z-40 rounded-lg border shadow-lg p-3 w-[280px] transition-all duration-300 ${inspectorOpen ? 'right-64' : 'right-3'} ${loadSummaryVisible ? 'top-[260px]' : 'top-28'}`}
                     style={{
                         backgroundColor: colors.panelBackground,
                         borderColor: colors.border,

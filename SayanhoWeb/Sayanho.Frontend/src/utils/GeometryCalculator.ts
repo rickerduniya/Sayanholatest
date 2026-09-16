@@ -142,8 +142,14 @@ export const calculateGeometry = (item: CanvasItem): { size: Size, connectionPoi
     }
 
     if (item.name === "HTPN") {
-        width = 56 * way * 3;
-        height = 170;
+        // Compact pitch: 44px per outgoing (was 55) — outgoing labels keep
+        // font-size, x -28 so they clear the previous tick/diagonal.
+        // Compact vertical: geometry H 136 / SVG 112 keeps the 170/140 scale.
+        // Width hugs the board: lastSlot + 22, so the diagonal tip (+12)
+        // keeps 4px to the border on every Way (was +6px per way of dead space;
+        // e.g. Way 8: 1104 -> 1074px).
+        width = 40 + (way * 3 - 1) * 44 + 22;
+        height = 136;
 
         // In
         const inX = width / 2;
@@ -152,7 +158,7 @@ export const calculateGeometry = (item: CanvasItem): { size: Size, connectionPoi
 
         // Out
         const xStart = 40;
-        const xIncrement = 55;
+        const xIncrement = 44;
         const yValue = height;
         let k = 1;
 
@@ -167,8 +173,11 @@ export const calculateGeometry = (item: CanvasItem): { size: Size, connectionPoi
         });
 
     } else if (item.name === "VTPN") {
-        width = 70 * way;
-        height = 170;
+        // Compact pitch: 52px per outgoing (was 65), tighter left margin.
+        // Width hugs the board: lastSlot + 22 (tip +4 to border, was +6px
+        // per way of dead space; e.g. Way 12: 696 -> 634px).
+        width = 40 + (way - 1) * 52 + 22;
+        height = 136;
 
         // In
         const inX = width / 2;
@@ -176,8 +185,8 @@ export const calculateGeometry = (item: CanvasItem): { size: Size, connectionPoi
         newConnectionPoints["in"] = { x: inX, y: inY };
 
         // Out
-        const xStart = 50;
-        const xIncrement = 65;
+        const xStart = 40;
+        const xIncrement = 52;
         const yValue = height;
 
         for (let i = 1; i <= way; i++) {
@@ -188,22 +197,29 @@ export const calculateGeometry = (item: CanvasItem): { size: Size, connectionPoi
         }
 
     } else if (item.name === "SPN DB") {
-        width = 60 * way;
-        height = 170;
+        // Compact pitch: 44px per outgoing (was 55), same label shift as HTPN.
+        // Outgoing symbols sit 5px right of their slot origin with a 10px
+        // diagonal lean (labels stay put), and width hugs the board:
+        // lastVisual + 22, so the diagonal tip keeps ~6px to the border and
+        // ~12px to the box edge — no growing dead space, no clipping.
+        // e.g. 2+18: 864 -> 815px; 2+6: 288 -> 287px.
+        width = 44 * way + 23;
+        height = 136;
 
         // In
         const inX = width / 2;
         const inY = 0;
         newConnectionPoints["in"] = { x: inX, y: inY };
 
-        // Out
+        // Out (visual tick = slot origin + SYM_SHIFT; labels stay at origin - 28)
         const xStart = 40;
-        const xIncrement = 55;
+        const xIncrement = 44;
+        const symShift = 5;
         const yValue = height;
 
         for (let i = 1; i <= way; i++) {
             const key = `out${i}`;
-            const x = xStart + (i - 1) * xIncrement;
+            const x = xStart + (i - 1) * xIncrement + symShift;
 
             newConnectionPoints[key] = { x: x, y: yValue };
         }

@@ -12,6 +12,7 @@ import { sortOptionStringsAsc } from '../utils/sortUtils';
 
 import { LOAD_ITEM_DEFAULTS, DefaultRulesEngine } from '../utils/DefaultRulesEngine';
 import { PanelDesignerDialog } from './PanelDesignerDialog.tsx';
+import { findIncompatibleConnectorsForItem } from '../utils/PhaseCompatibility';
 
 // Property Options Constants
 const OPTIONS = {
@@ -23,7 +24,9 @@ const OPTIONS = {
     BUSBAR_POSITION: ["Vertical", "Horizontal"],
     SOURCE_TYPE: ["1-phase", "3-phase"],
     SOURCE_VOLTAGE: ["230 V", "415 V", "440 V"],
-    SOURCE_FREQUENCY: ["50 Hz", "60 Hz"],
+    // India uses 50 Hz exclusively — 60 Hz is deliberately not offered, so
+    // neither a human nor the agent can select it. Single option auto-selects.
+    SOURCE_FREQUENCY: ["50 Hz"],
     RATINGS: ["32A", "63A", "100A", "125A", "160A", "200A", "250A", "400A", "630A", "800A", "1000A", "1250A", "1600A", "2000A", "2500A", "3200A", "4000A"],
     TYPE: ["Lighting", "Appliance", "Other"],
     SWITCH_VOLTAGE: ["230V DP", "415V TPN", "415V FP"],
@@ -715,6 +718,35 @@ export const PropertiesPanel: React.FC = React.memo(() => {
                     return;
                 }
             }
+            // Phase compatibility pre-check: build the prospective item first
+            // (including geometry) and block the save if it would invalidate
+            // existing wiring (single-phase vs 3-phase mismatch).
+            if (selectedItem) {
+                let preview: CanvasItem = {
+                    ...selectedItem,
+                    properties: [editedProperties],
+                    accessories: [editedAccessories],
+                    incomer: editedIncomer,
+                    outgoing: editedOutgoing,
+                    alternativeCompany1: editedAltComp1,
+                    alternativeCompany2: editedAltComp2
+                };
+                const previewGeometry = calculateGeometry(preview);
+                if (previewGeometry) {
+                    preview = { ...preview, size: previewGeometry.size, connectionPoints: previewGeometry.connectionPoints };
+                }
+                const phaseIssues = findIncompatibleConnectorsForItem(
+                    preview,
+                    currentSheet.storedConnectors,
+                    currentSheet.canvasItems.map(ci => ci.uniqueID === preview.uniqueID ? preview : ci)
+                );
+                if (phaseIssues.length > 0) {
+                    const details = phaseIssues.slice(0, 3).map(i => `• ${i.error}`).join('\n');
+                    const more = phaseIssues.length > 3 ? `\n...and ${phaseIssues.length - 3} more.` : '';
+                    alert(`Cannot save. This change would make ${phaseIssues.length} existing connection(s) phase-incompatible (single-phase vs 3-phase).\n\n${details}${more}\n\nDelete or rewire those connections first, or choose a compatible configuration.`);
+                    return;
+                }
+            }
             const updatedItems = currentSheet.canvasItems.map(item => {
                 if (item.uniqueID === selectedItemId) {
                     let finalAccessories = [editedAccessories];
@@ -762,6 +794,7 @@ export const PropertiesPanel: React.FC = React.memo(() => {
 
                     // Update visuals (SVG Content)
                     updatedItem.svgContent = updateItemVisuals(updatedItem);
+
                     return updatedItem;
                 }
                 return item;

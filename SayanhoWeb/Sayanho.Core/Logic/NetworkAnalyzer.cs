@@ -101,6 +101,185 @@ namespace Sayanho.Core.Logic
                     TraceAndCalculateCurrent(connector, voltage, phaseType, inheritedPhase: "", visited: new HashSet<string>());
                 }
             }
+
+            // Orphan phase propagation: networks not (yet) fed by a Source — e.g. an
+            // HTPN / Busbar / LT-panel subtree wired before the Source is connected —
+            // should still carry their device-derived phase downstream so connectors
+            // color correctly. Only fills connectors whose Phase is still unknown;
+            // never overwrites phases established by the Source-rooted trace above.
+            PropagateOrphanPhases();
+        }
+
+        private static string ParseHtpnPointPhase(string pointKey)
+        {
+            if (string.IsNullOrEmpty(pointKey)) return "";
+            var upper = pointKey.ToUpperInvariant();
+            if (upper.Contains("YELLOW")) return "Y";
+            if (upper.Contains("BLUE")) return "B";
+            if (upper.Contains("RED")) return "R";
+            if (upper.Contains("_Y") || upper.Contains("-Y") || upper.Contains("(Y)") || upper.Contains(" Y")) return "Y";
+            if (upper.Contains("_B") || upper.Contains("-B") || upper.Contains("(B)") || upper.Contains(" B")) return "B";
+            if (upper.Contains("_R") || upper.Contains("-R") || upper.Contains("(R)") || upper.Contains(" R")) return "R";
+            var trimmed = upper.Trim();
+            if (trimmed == "R" || trimmed.StartsWith("R")) return "R";
+            if (trimmed == "Y" || trimmed.StartsWith("Y")) return "Y";
+            if (trimmed == "B" || trimmed.StartsWith("B")) return "B";
+            if (pointKey.Contains("R")) return "R";
+            if (pointKey.Contains("Y")) return "Y";
+            if (pointKey.Contains("B")) return "B";
+            return "";
+        }
+
+        private static int GetOutgoingIndex(string pointKey)
+        {
+            if (string.IsNullOrEmpty(pointKey)) return -1;
+            if (!pointKey.StartsWith("out", StringComparison.OrdinalIgnoreCase)) return -1;
+            var indexPart = pointKey.Substring(3).Split('_')[0];
+            if (int.TryParse(indexPart, out int n)) return n - 1;
+            return -1;
+        }
+
+        private static bool IsSinglePhasePole(string pole)
+        {
+            if (string.IsNullOrEmpty(pole)) return false;
+            return pole.StartsWith("DP", StringComparison.OrdinalIgnoreCase)
+                || pole.StartsWith("SP", StringComparison.OrdinalIgnoreCase)
+                || pole.StartsWith("1P", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsSinglePhaseSwitchItem(CanvasItem item)
+        {
+            if (item == null) return false;
+            var voltage = "";
+            if (item.Properties != null && item.Properties.Any()
+                && item.Properties.First().TryGetValue("Voltage", out var v)) voltage = v ?? "";
+            if (item.Name == "Main Switch") return voltage.Contains("DP");
+            if (item.Name == "Change Over Switch") return voltage.Contains("DP") || voltage.Contains("230V");
+            return false;
+        }
+
+        private static string NormalizePhaseValue(string phase)
+        {
+            if (phase == "R" || phase == "Y" || phase == "B" || phase == "ALL") return phase;
+            return "";
+        }
+
+        /// <summary>
+        /// Locally-determined outgoing phase for any device that can emit
+        /// single-phase outputs — HTPN ways, Busbar taps, LT panel feeders,
+        /// SPN DBs, single-phase switches — mirroring the tracer's per-device rules.
+        /// Returns the phase when the device's own point keys / outgoing config /
+        /// properties decide it, null when the phase must be inherited from the
+        /// upstream (incoming) connector, or "" when it cannot be determined.
+        /// </summary>
+        private static string GetLocalOutgoingPhase(Connector connector, CanvasItem sourceItem)
+        {
+            var srcName = sourceItem?.Name ?? "";
+            var props = (sourceItem?.Properties != null && sourceItem.Properties.Any())
+                ? sourceItem.Properties.First() : new Dictionary<string, string>();
+            var outgoings = sourceItem?.Outgoing ?? new List<Dictionary<string, string>>();
+
+            if (srcName.Contains("HTPN"))
+            {
+                return ParseHtpnPointPhase(connector.SourcePointKey);
+            }
+            if (srcName == "Busbar Chamber")
+            {
+                var bars = (props.GetValueOrDefault("Bars", "4") ?? "4").Trim();
+                // 2-bar busbar is a single-phase system: every tap carries the incomer phase.
+                if (string.Equals(bars, "2", StringComparison.OrdinalIgnoreCase)) return null;
+                // 4-bar busbar: per-tap phase configuration (R/Y/B or ALL).
+                int idx = GetOutgoingIndex(connector.SourcePointKey);
+                string configured = "";
+                if (idx >= 0 && idx < outgoings.Count)
+                    configured = outgoings[idx].GetValueOrDefault("Phase", "") ?? "";
+                var defaults = new[] { "R", "Y", "B" };
+                var normalized = NormalizePhaseValue(
+                    !string.IsNullOrWhiteSpace(configured) ? configured : defaults[Math.Max(idx, 0) % 3]);
+                if (normalized == "ALL") return "ALL";
+                return normalized;
+            }
+            if (srcName.Contains("Cubical Panel"))
+            {
+                int idx = GetOutgoingIndex(connector.SourcePointKey);
+                Dictionary<string, string> outProp = null;
+                if (idx >= 0 && idx < outgoings.Count) outProp = outgoings[idx];
+                // Unconfigured panel outgoing: fall back to upstream inheritance.
+                if (outProp == null) return null;
+                var pole = outProp.GetValueOrDefault("Pole", "");
+                if (IsSinglePhasePole(pole))
+                {
+                    var selected = NormalizePhaseValue(outProp.GetValueOrDefault("Phase", ""));
+                    return string.IsNullOrEmpty(selected) ? "R" : selected;
+                }
+                return "ALL";
+            }
+            // SPN DB is single-phase: the whole board (and every outgoing) rides the incomer phase.
+            if (srcName == "SPN DB") return null;
+            if (srcName == "Main Switch" || srcName == "Change Over Switch")
+            {
+                return IsSinglePhaseSwitchItem(sourceItem) ? null : "ALL";
+            }
+            if (srcName.Contains("VTPN")) return "ALL";
+            if (srcName == "Source")
+            {
+                var type = props.GetValueOrDefault("Type", "") ?? "";
+                return type.Contains("3-phase") ? "ALL" : "R";
+            }
+            // Generic passthrough (switch boards, chained loads…): inherit upstream.
+            return null;
+        }
+
+        private string ResolveUpstreamPhase(Connector connector, HashSet<string> visited, int depth = 0)
+        {
+            if (depth > 50) return "";
+            if (connector.CurrentValues != null && connector.CurrentValues.TryGetValue("Phase", out var stored))
+            {
+                if (stored == "R" || stored == "Y" || stored == "B" || stored == "ALL") return stored;
+            }
+
+            string edgeKey = GetConnectorKey(connector);
+            if (visited.Contains(edgeKey)) return "";
+            visited.Add(edgeKey);
+
+            // Prefer the fresh item (outgoing config / properties may have changed
+            // after the connector snapshot was taken).
+            var srcId = connector.SourceItem?.UniqueID;
+            var fresh = (!string.IsNullOrEmpty(srcId))
+                ? allItems.FirstOrDefault(i => i.UniqueID == srcId) : null;
+            var local = GetLocalOutgoingPhase(connector, fresh ?? connector.SourceItem);
+            if (local == "R" || local == "Y" || local == "B" || local == "ALL") return local;
+            if (local == "") return "";
+
+            if (string.IsNullOrEmpty(srcId)) return "";
+            var incoming = allConnectors.FirstOrDefault(c => c.TargetItem?.UniqueID == srcId && GetConnectorKey(c) != edgeKey);
+            if (incoming == null) return "";
+            return ResolveUpstreamPhase(incoming, visited, depth + 1);
+        }
+
+        private void PropagateOrphanPhases()
+        {
+            bool changed = true;
+            int passes = 0;
+            int maxPasses = allConnectors.Count + 5;
+            while (changed && passes < maxPasses)
+            {
+                changed = false;
+                passes++;
+                foreach (var connector in allConnectors)
+                {
+                    string cur = "";
+                    if (connector.CurrentValues != null && connector.CurrentValues.TryGetValue("Phase", out var v)) cur = v ?? "";
+                    if (cur == "R" || cur == "Y" || cur == "B" || cur == "ALL") continue;
+                    var resolved = ResolveUpstreamPhase(connector, new HashSet<string>());
+                    if (resolved == "R" || resolved == "Y" || resolved == "B" || resolved == "ALL")
+                    {
+                        if (connector.CurrentValues == null) connector.CurrentValues = new Dictionary<string, string>();
+                        connector.CurrentValues["Phase"] = resolved;
+                        changed = true;
+                    }
+                }
+            }
         }
 
         private void TraceAndCalculateCurrent(Connector connector, float voltage, string phaseType, string inheritedPhase = "", HashSet<string> visited = null)
@@ -148,17 +327,11 @@ namespace Sayanho.Core.Logic
                 {
                     // For outgoing connections from HTPN DB, use 230V (single phase)
                     currentVoltage = 230f;
-                    
+
                     // Determine phase based on the connection point key
                     string sourcePointKey = connector.SourcePointKey;
-                    if (sourcePointKey.Contains("R") || sourcePointKey.StartsWith("R"))
-                        phase = "R";
-                    else if (sourcePointKey.Contains("Y") || sourcePointKey.StartsWith("Y"))
-                        phase = "Y";
-                    else if (sourcePointKey.Contains("B") || sourcePointKey.StartsWith("B"))
-                        phase = "B";
-                    else
-                        phase = "R"; // Default to R phase if not specified
+                    string parsed = ParseHtpnPointPhase(sourcePointKey);
+                    phase = string.IsNullOrEmpty(parsed) ? "R" : parsed; // Default to R phase if not specified
                 }
                 // For Main Switch and Change Over Switch, determine phase based on Voltage property
                 else if (connector.SourceItem != null && 
@@ -707,14 +880,8 @@ namespace Sayanho.Core.Logic
                         {
                             // Determine phase based on the connection point key
                             string outPointKey = outConnector.SourcePointKey;
-                            string outPhase = "R"; // Default
-                            
-                            if (outPointKey.Contains("R") || outPointKey.StartsWith("R"))
-                                outPhase = "R";
-                            else if (outPointKey.Contains("Y") || outPointKey.StartsWith("Y"))
-                                outPhase = "Y";
-                            else if (outPointKey.Contains("B") || outPointKey.StartsWith("B"))
-                                outPhase = "B";
+                            string parsedPhase = ParseHtpnPointPhase(outPointKey);
+                            string outPhase = string.IsNullOrEmpty(parsedPhase) ? "R" : parsedPhase; // Default
                             
                             // Pass the specific phase to this outgoing connection
                             TraceAndCalculateCurrent(outConnector, 230f, phaseType, outPhase, visited);

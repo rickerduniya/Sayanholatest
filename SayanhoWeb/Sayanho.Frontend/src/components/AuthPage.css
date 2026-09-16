@@ -28,4 +28,14 @@
 .auth-card form > button:disabled { cursor: wait; opacity: 0.65; }
 .auth-hint { margin-top: -0.45rem; color: #a1a1aa; font-size: 0.8rem; }
 .auth-error { margin: 0; color: #fca5a5; font-size: 0.9rem; }
+.auth-notice {
+    margin: 0;
+    padding: 0.6rem 0.75rem;
+    border: 1px solid rgba(129, 140, 248, 0.35);
+    border-radius: 8px;
+    background: rgba(99, 102, 241, 0.12);
+    color: #c7d2fe;
+    font-size: 0.82rem;
+    line-height: 1.45;
+}
 .auth-switch { width: 100%; margin-top: 1rem; border: 0; background: transparent; color: #a5b4fc; cursor: pointer; font-size: 0.9rem; }

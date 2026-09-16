@@ -1,12 +1,15 @@
-<svg width="320" height="140" xmlns="http://www.w3.org/2000/svg">
-  <rect id="border" x="2" y="2" width="318" height="137" fill="none" stroke="black" stroke-width="1" />
-  <text id="nameplate" x="8" y="20" font-family="Arial" font-size="13" fill="black" font-weight="bold">
-     Way SPN DB
+<svg width="199" height="112" xmlns="http://www.w3.org/2000/svg">
+  <rect id="border" x="2" y="2" width="191" height="109" fill="none" stroke="black" stroke-width="1" />
+  <text id="nameplate" x="8" y="14" font-family="Arial" font-size="13" fill="black" font-weight="bold">
+     2+4 Way
   </text>
-  <g id="incoming" transform="translate(160, 50)">
-    <line id="line1" x1="0" y1="-49" x2="0" y2="-20" stroke="black" stroke-width="3" />
+  <text id="nameplate2" x="8" y="28" font-family="Arial" font-size="13" fill="black" font-weight="bold">
+     SPN DB
+  </text>
+  <g id="incoming" transform="translate(99.5, 30)">
+    <line id="line1" x1="0" y1="-29" x2="0" y2="-20" stroke="black" stroke-width="3" />
     <line id="line2" x1="12" y1="-18" x2="0" y2="0" stroke="black" stroke-width="3" />
-    <line id="line3" x1="0" y1="-2" x2="0" y2="32" stroke="black" stroke-width="3" />
+    <line id="line3" x1="0" y1="-2" x2="0" y2="30" stroke="black" stroke-width="3" />
     <text id="incomingtext1" x="-40" y="-10" font-family="Arial" font-size="12" fill="black">
       A
     </text>
@@ -17,7 +20,7 @@
       ISO
     </text>
   </g>
-  <line id="Busbar" x1="38" y1="80" x2="292" y2="80" stroke="black" stroke-width="5" />
+  <line id="Busbar" x1="36" y1="58" x2="181" y2="58" stroke="black" stroke-width="5" />
   <g id="outgoing-group">
 
   </g>

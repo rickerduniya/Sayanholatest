@@ -40,7 +40,7 @@ export interface ConnectionPath {
 
 // Constants from C#
 const MARGIN_OFFSET = 10;
-const OFFSET = 20;
+const OFFSET = 5; // Min outgoing straight stub before a 90° bend (halved twice: 20 -> 10 -> 5)
 const OBSTACLE_AVOIDANCE_OFFSET = 5;
 const PARALLEL_LINE_THRESHOLD = 8;
 
@@ -166,7 +166,7 @@ export class ConnectorUtils {
             const targetTop = targetItem.position.y;
 
             baseBusY = sourceConnectionY + BUS_OFFSET;
-            minBusY = sourceConnectionY + 10;
+            minBusY = sourceConnectionY + OFFSET;
             maxBusY = targetTop - OFFSET;
 
             // If not enough space, fall back to L-shape
@@ -184,7 +184,7 @@ export class ConnectorUtils {
 
             baseBusY = sourceConnectionY - BUS_OFFSET;
             minBusY = targetBottom + OFFSET;
-            maxBusY = sourceConnectionY - 10;
+            maxBusY = sourceConnectionY - OFFSET;
 
             // If not enough space, fall back to L-shape
             if (baseBusY <= minBusY) {

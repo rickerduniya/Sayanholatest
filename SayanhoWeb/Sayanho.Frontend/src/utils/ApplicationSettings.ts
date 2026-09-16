@@ -9,8 +9,9 @@ export interface AppSettings {
     showCurrentValues: boolean;
     showCableSpecs: boolean;
     connectorSpecTextFontSize: number;
+    sldDownstreamGapFactor: number;
     aiSettings: {
-        provider: 'gemini' | 'groq' | 'openrouter' | 'mistral';
+        provider: 'gemini' | 'groq' | 'openrouter' | 'mistral' | 'bai';
         geminiApiKey: string;
         geminiModelName: string;
         groqApiKey: string;
@@ -27,6 +28,9 @@ export interface AppSettings {
         mistralApiKey: string;
         mistralModelName: string;
         mistralBaseUrl: string;
+        baiApiKey: string;
+        baiModelName: string;
+        baiBaseUrl: string;
         requestsPerMinute: number;
         maxRetryAttempts: number;
         retryOnError: boolean;
@@ -56,6 +60,7 @@ const DEFAULT_SETTINGS: AppSettings = {
     showCurrentValues: true,
     showCableSpecs: true,
     connectorSpecTextFontSize: 10,
+    sldDownstreamGapFactor: 1.8,
     aiSettings: {
         provider: 'gemini',
         geminiApiKey: '',
@@ -74,6 +79,9 @@ const DEFAULT_SETTINGS: AppSettings = {
         mistralApiKey: '',
         mistralModelName: 'mistral-small-latest',
         mistralBaseUrl: 'https://api.mistral.ai/v1',
+        baiApiKey: '',
+        baiModelName: 'gpt-5.6-luna',
+        baiBaseUrl: 'https://api.b.ai/v1',
         requestsPerMinute: 30,
         maxRetryAttempts: 2,
         retryOnError: true,
@@ -189,6 +197,18 @@ export class ApplicationSettings {
         return this.load().connectorSpecTextFontSize;
     }
 
+    /**
+     * Downstream-row spacing factor for SLD auto-arrange: adjacent tier-0
+     * centres sit ((w1+w2)/2) * factor apart. Clamped to [1, 3] — below 1.0
+     * items would overlap; above 3.0 is wasted canvas. Old stored settings
+     * without the key fall back to the 1.8 default via the load() merge.
+     */
+    static getSldDownstreamGapFactor(): number {
+        const raw = this.load().sldDownstreamGapFactor;
+        if (typeof raw !== 'number' || !Number.isFinite(raw)) return 1.8;
+        return Math.min(3, Math.max(1, raw));
+    }
+
     static getAiSettings() {
         const ai = this.load().aiSettings;
         const provider = ai.provider || 'gemini';
@@ -232,6 +252,15 @@ export class ApplicationSettings {
                 apiKey: ai.mistralApiKey || '',
                 modelName: ai.mistralModelName || 'mistral-small-latest',
                 baseUrl: ai.mistralBaseUrl || 'https://api.mistral.ai/v1',
+                ...common
+            };
+        }
+        if (provider === 'bai') {
+            return {
+                provider,
+                apiKey: ai.baiApiKey || '',
+                modelName: ai.baiModelName || 'gpt-5.6-luna',
+                baseUrl: ai.baiBaseUrl || 'https://api.b.ai/v1',
                 ...common
             };
         }

@@ -1,6 +1,161 @@
 import { CanvasItem, Connector, CanvasSheet } from '../types';
 import { ApplicationSettings } from './ApplicationSettings';
 
+export type ResolvedPhase = 'R' | 'Y' | 'B' | 'ALL' | '';
+
+/**
+ * Parse an HTPN outgoing point key into its phase.
+ * Handles keys like "out1_Red Phase", "out2_Yellow Phase", "out3_Blue Phase"
+ * as well as legacy short forms ("R1", "out1_R", "R", ...).
+ */
+export function parseHtpnPointPhase(pointKey?: string): 'R' | 'Y' | 'B' | null {
+    if (!pointKey) return null;
+    const upper = pointKey.toUpperCase();
+    if (upper.includes('YELLOW')) return 'Y';
+    if (upper.includes('BLUE')) return 'B';
+    if (upper.includes('RED')) return 'R';
+    // Suffix/prefix forms: out1_R, out1-Y, (R), R1, Y2, B3 ...
+    if (upper.includes('_Y') || upper.includes('-Y') || upper.includes('(Y)') || upper.includes(' Y')) return 'Y';
+    if (upper.includes('_B') || upper.includes('-B') || upper.includes('(B)') || upper.includes(' B')) return 'B';
+    if (upper.includes('_R') || upper.includes('-R') || upper.includes('(R)') || upper.includes(' R')) return 'R';
+    const trimmed = upper.trim();
+    if (trimmed === 'R' || trimmed.startsWith('R')) return 'R';
+    if (trimmed === 'Y' || trimmed.startsWith('Y')) return 'Y';
+    if (trimmed === 'B' || trimmed.startsWith('B')) return 'B';
+    // Legacy fallback mirroring the original includes() checks.
+    if (pointKey.includes('R')) return 'R';
+    if (pointKey.includes('Y')) return 'Y';
+    if (pointKey.includes('B')) return 'B';
+    return null;
+}
+
+const connectorEdgeKey = (c: Connector): string => {
+    const sId = c.sourceItem?.uniqueID || 'null';
+    const tId = c.targetItem?.uniqueID || 'null';
+    return `${sId}:${c.sourcePointKey || ''}->${tId}:${c.targetPointKey || ''}`;
+};
+
+/** Numeric index of an `out{N}` point key (0-based), or -1 when not parseable. */
+export function getOutgoingIndex(sourcePointKey?: string): number {
+    if (!sourcePointKey) return -1;
+    const m = /^out(\d+)/i.exec(sourcePointKey);
+    if (!m) return -1;
+    const n = parseInt(m[1], 10);
+    return isNaN(n) ? -1 : n - 1;
+}
+
+/** Single-phase outgoing poles on panels (DP/SP/1P…), as used by the tracer. */
+export function isSinglePhasePole(pole?: string): boolean {
+    if (!pole) return false;
+    const u = pole.toUpperCase();
+    return u.startsWith('DP') || u.startsWith('SP') || u.startsWith('1P');
+}
+
+/** True when a Main/Change-Over switch is configured single-phase. */
+export function isSinglePhaseSwitchItem(item?: CanvasItem | null): boolean {
+    if (!item) return false;
+    const voltage = ((item.properties?.[0] || {}) as Record<string, string>)['Voltage'] || '';
+    if (item.name === 'Main Switch') return voltage.includes('DP');
+    if (item.name === 'Change Over Switch') return voltage.includes('DP') || voltage.includes('230V');
+    return false;
+}
+
+const normalizePhaseValue = (p?: string): ResolvedPhase => {
+    if (p === 'R' || p === 'Y' || p === 'B' || p === 'ALL') return p;
+    return '';
+};
+
+/**
+ * Locally-determined outgoing phase for any device that can emit
+ * single-phase outputs — HTPN ways, Busbar taps, LT panel feeders, SPN DBs,
+ * single-phase switches — mirroring the tracer's per-device rules.
+ *
+ * Returns the phase when the device's own point keys / outgoing config /
+ * properties decide it, `null` when the phase must be inherited from the
+ * upstream (incoming) connector, or `''` when it cannot be determined.
+ */
+export function getLocalOutgoingPhase(
+    connector: Connector,
+    sourceItem?: CanvasItem | null
+): ResolvedPhase | null {
+    const src = sourceItem || connector.sourceItem;
+    const srcName = src?.name || '';
+    const props = ((src?.properties?.[0] || {}) as Record<string, string>);
+    const outgoings = src?.outgoing || [];
+
+    if (srcName.includes('HTPN')) {
+        return parseHtpnPointPhase(connector.sourcePointKey) || '';
+    }
+    if (srcName === 'Busbar Chamber') {
+        const bars = (props['Bars'] || '4').toString().trim();
+        // 2-bar busbar is a single-phase system: every tap carries the incomer phase.
+        if (bars === '2') return null;
+        // 4-bar busbar: per-tap phase configuration (R/Y/B or ALL).
+        const idx = getOutgoingIndex(connector.sourcePointKey);
+        const configured = idx >= 0 && idx < outgoings.length ? outgoings[idx]?.['Phase'] : undefined;
+        const fallback = ['R', 'Y', 'B'][Math.max(idx, 0) % 3];
+        const normalized = normalizePhaseValue((configured || fallback)?.toString());
+        if (normalized === 'ALL') return 'ALL';
+        return normalized || '';
+    }
+    if (srcName.includes('Cubical Panel')) {
+        const idx = getOutgoingIndex(connector.sourcePointKey);
+        const out = idx >= 0 && idx < outgoings.length ? outgoings[idx] : undefined;
+        // Unconfigured panel outgoing: fall back to upstream inheritance.
+        if (!out) return null;
+        if (isSinglePhasePole(out['Pole'])) return normalizePhaseValue(out['Phase']) || 'R';
+        return 'ALL';
+    }
+    // SPN DB is single-phase: the whole board (and every outgoing) rides the incomer phase.
+    if (srcName === 'SPN DB') return null;
+    if (srcName === 'Main Switch' || srcName === 'Change Over Switch') {
+        return isSinglePhaseSwitchItem(src) ? null : 'ALL';
+    }
+    if (srcName.includes('VTPN')) return 'ALL';
+    if (srcName === 'Source') {
+        return (props['Type'] || '').includes('3-phase') ? 'ALL' : 'R';
+    }
+    // Generic passthrough (switch boards, chained loads…): inherit upstream.
+    return null;
+}
+
+/**
+ * Resolve the phase for a connector without requiring a Source-rooted trace.
+ * Order: stored currentValues -> device-local outgoing phase (HTPN ways,
+ * Busbar taps, LT panel feeders, …) -> walk upstream through the incoming
+ * connector of the source item (handles grand-children of any such device).
+ */
+export function resolveUpstreamPhase(
+    connector: Connector,
+    allConnectors: Connector[],
+    allItems?: CanvasItem[],
+    visited: Set<string> = new Set<string>(),
+    depth = 0
+): ResolvedPhase {
+    if (depth > 50) return '';
+    const stored = connector.currentValues?.['Phase'];
+    if (stored === 'R' || stored === 'Y' || stored === 'B' || stored === 'ALL') return stored;
+
+    const edgeKey = connectorEdgeKey(connector);
+    if (visited.has(edgeKey)) return '';
+    visited.add(edgeKey);
+
+    // Prefer the fresh item (outgoing config / properties may have changed
+    // after the connector snapshot was taken).
+    const srcId = connector.sourceItem?.uniqueID;
+    const fresh = (allItems && srcId) ? allItems.find(i => i.uniqueID === srcId) : undefined;
+    const local = getLocalOutgoingPhase(connector, fresh || connector.sourceItem);
+    if (local === 'R' || local === 'Y' || local === 'B' || local === 'ALL') return local;
+    if (local === '') return '';
+
+    if (!srcId) return '';
+    const incoming = allConnectors.find(c =>
+        c.targetItem?.uniqueID === srcId && connectorEdgeKey(c) !== edgeKey
+    );
+    if (!incoming) return '';
+    return resolveUpstreamPhase(incoming, allConnectors, allItems, visited, depth + 1);
+}
+
 export class NetworkAnalyzer {
     private allItems: CanvasItem[] = [];
     private allConnectors: Connector[] = [];
@@ -56,6 +211,33 @@ export class NetworkAnalyzer {
                 this.traceAndCalculateCurrent(connector, voltage, phaseType, "", new Set<string>(), new Set<string>());
             });
         });
+
+        // Orphan phase propagation: networks not (yet) fed by a Source — e.g. an
+        // HTPN / Busbar / LT-panel subtree wired before the Source is connected —
+        // should still carry their device-derived phase downstream so connectors
+        // color correctly. This only fills connectors whose Phase is still unknown
+        // and never overwrites phases established by the Source-rooted trace above.
+        this.propagateOrphanPhases();
+    }
+
+    private propagateOrphanPhases(): void {
+        let changed = true;
+        let passes = 0;
+        const maxPasses = this.allConnectors.length + 5;
+        while (changed && passes < maxPasses) {
+            changed = false;
+            passes++;
+            for (const connector of this.allConnectors) {
+                const cur = connector.currentValues?.["Phase"];
+                if (cur === "R" || cur === "Y" || cur === "B" || cur === "ALL") continue;
+                const resolved = resolveUpstreamPhase(connector, this.allConnectors, this.allItems);
+                if (resolved === "R" || resolved === "Y" || resolved === "B" || resolved === "ALL") {
+                    if (!connector.currentValues) connector.currentValues = {};
+                    connector.currentValues["Phase"] = resolved;
+                    changed = true;
+                }
+            }
+        }
     }
 
     private traceAndCalculateCurrent(
@@ -91,11 +273,7 @@ export class NetworkAnalyzer {
                 phase = incoming?.currentValues?.["Phase"] || "R";
             } else if (sourceItem?.name?.includes("HTPN")) {
                 currentVoltage = 230;
-                const sourcePointKey = connector.sourcePointKey || "";
-                if (sourcePointKey.includes("R") || sourcePointKey.startsWith("R")) phase = "R";
-                else if (sourcePointKey.includes("Y") || sourcePointKey.startsWith("Y")) phase = "Y";
-                else if (sourcePointKey.includes("B") || sourcePointKey.startsWith("B")) phase = "B";
-                else phase = "R";
+                phase = parseHtpnPointPhase(connector.sourcePointKey) || "R";
             } else if (sourceItem?.name === "Main Switch" || sourceItem?.name === "Change Over Switch") {
                 if (sourceItem.name === "Change Over Switch") {
                     // Change Over Switch Handler Logic
@@ -370,11 +548,7 @@ export class NetworkAnalyzer {
                     });
                 } else if (targetItem.name?.includes("HTPN")) {
                     outgoingConnectors.forEach(outConnector => {
-                        const outPointKey = outConnector.sourcePointKey || "";
-                        let outPhase = "R";
-                        if (outPointKey.includes("R") || outPointKey.startsWith("R")) outPhase = "R";
-                        else if (outPointKey.includes("Y") || outPointKey.startsWith("Y")) outPhase = "Y";
-                        else if (outPointKey.includes("B") || outPointKey.startsWith("B")) outPhase = "B";
+                        const outPhase = parseHtpnPointPhase(outConnector.sourcePointKey) || "R";
 
                         this.traceAndCalculateCurrent(outConnector, 230, phaseType, outPhase, visited, visitedNets);
                         totalCurrent += this.parseCurrent(outConnector.currentValues?.["Current"]);

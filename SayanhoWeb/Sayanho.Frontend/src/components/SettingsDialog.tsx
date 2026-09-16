@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import { ApplicationSettings, AppSettings } from '../utils/ApplicationSettings';
 import { useTheme } from '../context/ThemeContext';
 import { useStore } from '../store/useStore';
@@ -9,11 +10,21 @@ interface SettingsDialogProps {
     onSave: () => void;
 }
 
+/** Default B.AI endpoint, per https://docs.b.ai/llmservice/api/. */
+const BAI_DEFAULT_BASE_URL = 'https://api.b.ai/v1';
+const BAI_DEFAULT_MODEL = 'gpt-5.6-luna';
+
 export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose, onSave }) => {
     const { colors } = useTheme();
     const { settings: storeSettings, updateSettings } = useStore();
     const [activeTab, setActiveTab] = useState<'calculation' | 'image' | 'ai'>('calculation');
     const [settings, setSettings] = useState<AppSettings | null>(null);
+
+    // Which model IDs the entered B.AI key can actually use. Model access is
+    // per-credential on B.AI, so a hardcoded list would be wrong for most
+    // accounts — GET /v1/models is the only authoritative source.
+    const [baiModels, setBaiModels] = useState<string[]>([]);
+    const [baiModelsStatus, setBaiModelsStatus] = useState<{ state: 'idle' | 'loading' | 'error' | 'done'; message?: string }>({ state: 'idle' });
 
     useEffect(() => {
         if (isOpen) {
@@ -30,6 +41,57 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose,
     }, [isOpen, storeSettings]);
 
     if (!isOpen || !settings) return null;
+
+    /**
+     * Fetch the model IDs this B.AI key is entitled to (GET /v1/models).
+     *
+     * Kept as an explicit button rather than an effect: it spends a request on
+     * the user's credential, and the key is typed character by character.
+     */
+    const loadBaiModels = async () => {
+        const ai = settings.aiSettings as any;
+        const apiKey = (ai?.baiApiKey || '').trim();
+        const baseUrl = (ai?.baiBaseUrl || BAI_DEFAULT_BASE_URL)
+            .trim()
+            .replace(/\/+$/, '')
+            .replace(/\/(chat\/completions|responses|messages|models)$/i, '');
+
+        if (!apiKey) {
+            setBaiModels([]);
+            setBaiModelsStatus({ state: 'error', message: 'Enter the API key first.' });
+            return;
+        }
+
+        setBaiModelsStatus({ state: 'loading' });
+        try {
+            const response = await axios.get(`${baseUrl || BAI_DEFAULT_BASE_URL}/models`, {
+                headers: { Authorization: `Bearer ${apiKey}` }
+            });
+            const ids: string[] = (response.data?.data || [])
+                .map((m: any) => (typeof m === 'string' ? m : m?.id))
+                .filter((id: any): id is string => typeof id === 'string' && id.length > 0)
+                .sort((a: string, b: string) => a.localeCompare(b));
+
+            setBaiModels(ids);
+            setBaiModelsStatus(
+                ids.length > 0
+                    ? { state: 'done', message: `${ids.length} model(s) available.` }
+                    : { state: 'error', message: 'The key is valid but no models are enabled on it.' }
+            );
+        } catch (e: any) {
+            const status = e?.response?.status;
+            const apiMessage = e?.response?.data?.error?.message || e?.response?.data?.message;
+            setBaiModels([]);
+            setBaiModelsStatus({
+                state: 'error',
+                message: status === 401
+                    ? 'Key rejected (401). Check that it is a production key.'
+                    : status === 403
+                        ? 'Key lacks permission (403). Check the account status.'
+                        : apiMessage || e?.message || 'Could not reach the B.AI API.'
+            });
+        }
+    };
 
     const handleSave = () => {
         if (settings) {
@@ -68,6 +130,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose,
                 showCurrentValues: true,
                 showCableSpecs: true,
                 connectorSpecTextFontSize: 10,
+                sldDownstreamGapFactor: 1.8,
                 aiSettings: {
                     provider: 'gemini',
                     geminiApiKey: '',
@@ -86,6 +149,9 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose,
                     mistralApiKey: '',
                     mistralModelName: 'mistral-small-latest',
                     mistralBaseUrl: 'https://api.mistral.ai/v1',
+                    baiApiKey: '',
+                    baiModelName: BAI_DEFAULT_MODEL,
+                    baiBaseUrl: BAI_DEFAULT_BASE_URL,
                     requestsPerMinute: 30,
                     maxRetryAttempts: 2,
                     retryOnError: true,
@@ -187,7 +253,6 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose,
                                     />
                                 </div>
                             </div>
-
                             {/* Diversification Factors */}
                             <div className="space-y-3">
                                 <label className="font-bold text-sm block">Diversification Factors:</label>
@@ -209,6 +274,31 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose,
                                     ))}
                                 </div>
                             </div>
+
+                            {/* SLD Auto-Arrange downstream spacing */}
+                            <div className="space-y-3">
+                                <label className="font-bold text-sm block">Schematic Auto-Arrange:</label>
+                                <div className="pl-4 space-y-2">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <span className="text-sm">Downstream row gap (× mean width):</span>
+                                        <span className="text-sm font-mono w-10 text-right">{(settings.sldDownstreamGapFactor ?? 1.8).toFixed(2)}×</span>
+                                    </div>
+                                    <input
+                                        type="range"
+                                        min="1"
+                                        max="2"
+                                        step="0.05"
+                                        value={settings.sldDownstreamGapFactor ?? 1.8}
+                                        onChange={e => setSettings({ ...settings, sldDownstreamGapFactor: parseFloat(e.target.value) })}
+                                        className="w-full"
+                                        aria-label="Downstream row gap factor"
+                                    />
+                                    <p className="text-xs opacity-70">
+                                        Centre-to-centre distance between adjacent bottom-row items.
+                                        1.00× packs them touching · 1.80× default · higher spreads them out.
+                                    </p>
+                                </div>
+                            </div>
                         </div>
 
                     ) : activeTab === 'ai' ? (
@@ -228,6 +318,7 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose,
                                     <option value="groq">Groq</option>
                                     <option value="openrouter">OpenRouter</option>
                                     <option value="mistral">Mistral</option>
+                                    <option value="bai">B.AI</option>
                                 </select>
                             </div>
 
@@ -427,6 +518,104 @@ export const SettingsDialog: React.FC<SettingsDialogProps> = ({ isOpen, onClose,
                                             />
                                             <span className="text-sm">Hide reasoning text (still used internally)</span>
                                         </div>
+                                    </div>
+                                </>
+                            ) : (settings.aiSettings?.provider === 'bai') ? (
+                                <>
+                                    <div className="space-y-3">
+                                        <label className="font-bold text-sm block">B.AI API Key:</label>
+                                        <input
+                                            type="password"
+                                            value={(settings.aiSettings as any)?.baiApiKey || ''}
+                                            onChange={e => {
+                                                setBaiModels([]);
+                                                setBaiModelsStatus({ state: 'idle' });
+                                                setSettings({
+                                                    ...settings,
+                                                    aiSettings: { ...settings.aiSettings, baiApiKey: e.target.value }
+                                                });
+                                            }}
+                                            className="w-full px-3 py-2 rounded border"
+                                            style={{ backgroundColor: colors.canvasBackground, borderColor: colors.border, color: colors.text }}
+                                            placeholder="sk-..."
+                                        />
+                                        <p className="text-xs opacity-70">
+                                            Sent from your browser straight to B.AI over HTTPS and stored only in this browser. It is never sent to the Sayanho backend.
+                                        </p>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <label className="font-bold text-sm block">B.AI Model:</label>
+                                        <input
+                                            type="text"
+                                            list="bai-model-options"
+                                            value={(settings.aiSettings as any)?.baiModelName || BAI_DEFAULT_MODEL}
+                                            onChange={e => setSettings({
+                                                ...settings,
+                                                aiSettings: { ...settings.aiSettings, baiModelName: e.target.value }
+                                            })}
+                                            className="w-full px-3 py-2 rounded border"
+                                            style={{ backgroundColor: colors.canvasBackground, borderColor: colors.border, color: colors.text }}
+                                            placeholder={`e.g. ${BAI_DEFAULT_MODEL}`}
+                                        />
+                                        <datalist id="bai-model-options">
+                                            {baiModels.map(id => <option key={id} value={id} />)}
+                                        </datalist>
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={loadBaiModels}
+                                                disabled={baiModelsStatus.state === 'loading'}
+                                                className="px-3 py-1.5 text-xs rounded border disabled:opacity-50"
+                                                style={{ borderColor: colors.border, color: colors.text }}
+                                            >
+                                                {baiModelsStatus.state === 'loading' ? 'Loading…' : 'Fetch available models'}
+                                            </button>
+                                            {baiModelsStatus.message && (
+                                                <span
+                                                    className="text-xs"
+                                                    style={{ color: baiModelsStatus.state === 'error' ? '#dc2626' : colors.text, opacity: baiModelsStatus.state === 'error' ? 1 : 0.7 }}
+                                                >
+                                                    {baiModelsStatus.message}
+                                                </span>
+                                            )}
+                                        </div>
+                                        {baiModels.length > 0 && (
+                                            <select
+                                                value=""
+                                                onChange={e => {
+                                                    if (!e.target.value) return;
+                                                    setSettings({
+                                                        ...settings,
+                                                        aiSettings: { ...settings.aiSettings, baiModelName: e.target.value }
+                                                    });
+                                                }}
+                                                className="w-full px-3 py-2 rounded border"
+                                                style={{ backgroundColor: colors.canvasBackground, borderColor: colors.border, color: colors.text }}
+                                            >
+                                                <option value="">— pick from your available models —</option>
+                                                {baiModels.map(id => <option key={id} value={id}>{id}</option>)}
+                                            </select>
+                                        )}
+                                        <p className="text-xs opacity-70">
+                                            Tool calling is required for the agent, so pick a model that supports functions (for example the GPT, Claude or DeepSeek families).
+                                        </p>
+                                    </div>
+                                    <div className="space-y-3">
+                                        <label className="font-bold text-sm block">B.AI Base URL:</label>
+                                        <input
+                                            type="text"
+                                            value={(settings.aiSettings as any)?.baiBaseUrl || BAI_DEFAULT_BASE_URL}
+                                            onChange={e => setSettings({
+                                                ...settings,
+                                                aiSettings: { ...settings.aiSettings, baiBaseUrl: e.target.value }
+                                            })}
+                                            className="w-full px-3 py-2 rounded border"
+                                            style={{ backgroundColor: colors.canvasBackground, borderColor: colors.border, color: colors.text }}
+                                            placeholder={BAI_DEFAULT_BASE_URL}
+                                        />
+                                        <p className="text-xs opacity-70">
+                                            Requests use the OpenAI-compatible <code>/chat/completions</code> endpoint on this base URL.
+                                        </p>
                                     </div>
                                 </>
                             ) : (
