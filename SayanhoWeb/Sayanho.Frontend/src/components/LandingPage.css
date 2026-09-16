@@ -1,3 +1,5 @@
+/* Existing CSS... adding new sections */
+
 :root {
     --lp-primary: #6366f1;
     --lp-primary-hover: #4f46e5;
@@ -278,7 +280,8 @@ body {
     z-index: 2;
 }
 
-.hero-visual img {
+.hero-visual img,
+.hero-visual video {
     width: 100%;
     display: block;
 }
@@ -480,6 +483,98 @@ body {
     display: block;
 }
 
+/* ========== Specs Section (New) ========== */
+.specs-section {
+    padding: 6rem 3rem;
+    background: rgba(255, 255, 255, 0.01);
+    max-width: 1400px;
+    margin: 0 auto;
+}
+
+.specs-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 2rem;
+}
+
+.spec-item {
+    display: flex;
+    gap: 1.5rem;
+    padding: 2rem;
+    border: 1px solid var(--lp-border);
+    border-radius: 1rem;
+    background: rgba(255, 255, 255, 0.02);
+}
+
+.spec-icon {
+    color: var(--lp-accent);
+}
+
+.spec-item h4 {
+    margin: 0 0 0.5rem;
+    font-size: 1.25rem;
+}
+
+.spec-item p {
+    margin: 0;
+    color: var(--lp-text-muted);
+}
+
+/* ========== FAQ Section (New) ========== */
+.faq-section {
+    padding: 8rem 3rem;
+    max-width: 800px;
+    margin: 0 auto;
+}
+
+.faq-container {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+}
+
+.faq-item {
+    border: 1px solid var(--lp-border);
+    border-radius: 1rem;
+    padding: 1.5rem;
+    background: rgba(255, 255, 255, 0.02);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.faq-item:hover {
+    border-color: var(--lp-border-hover);
+    background: rgba(255, 255, 255, 0.04);
+}
+
+.faq-question {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-weight: 600;
+    font-size: 1.1rem;
+}
+
+.faq-icon {
+    transition: transform 0.3s;
+}
+
+.faq-icon.rotate {
+    transform: rotate(180deg);
+}
+
+.faq-answer {
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.3s ease-out;
+    color: var(--lp-text-muted);
+}
+
+.faq-item.open .faq-answer {
+    max-height: 200px;
+    margin-top: 1rem;
+}
+
 /* ========== Export Section ========== */
 .export-section {
     padding: 8rem 3rem;
@@ -530,59 +625,6 @@ body {
     color: var(--lp-text-muted);
     margin: 0;
     line-height: 1.5;
-}
-
-/* ========== Workflow Section ========== */
-.workflow-section {
-    padding: 8rem 3rem;
-    background: linear-gradient(180deg, transparent 0%, rgba(99, 102, 241, 0.03) 50%, transparent 100%);
-}
-
-.workflow-steps {
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    gap: 2rem;
-    max-width: 1200px;
-    margin: 0 auto;
-}
-
-.workflow-step {
-    flex: 1;
-    max-width: 300px;
-    text-align: center;
-    padding: 2rem;
-}
-
-.step-number {
-    font-size: 3rem;
-    font-weight: 900;
-    background: linear-gradient(135deg, var(--lp-primary) 0%, var(--lp-accent) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    -webkit-text-fill-color: transparent;
-    margin-bottom: 1rem;
-}
-
-.workflow-step h4 {
-    font-size: 1.5rem;
-    font-weight: 700;
-    margin: 0 0 0.75rem;
-}
-
-.workflow-step p {
-    font-size: 1rem;
-    color: var(--lp-text-muted);
-    line-height: 1.6;
-    margin: 0;
-}
-
-.workflow-connector {
-    width: 60px;
-    height: 2px;
-    background: linear-gradient(90deg, var(--lp-primary), var(--lp-accent));
-    margin-top: 4rem;
-    border-radius: 1px;
 }
 
 /* ========== Theme Section ========== */
@@ -743,15 +785,8 @@ body {
         grid-template-columns: 1fr;
     }
 
-    .workflow-steps {
-        flex-direction: column;
-        align-items: center;
-    }
-
-    .workflow-connector {
-        width: 2px;
-        height: 40px;
-        margin: 0;
+    .specs-grid {
+        grid-template-columns: 1fr;
     }
 
     .section-header h2 {
@@ -811,7 +846,8 @@ body {
     .features-section,
     .deep-dive,
     .export-section,
-    .workflow-section {
+    .specs-section,
+    .faq-section {
         padding: 4rem 1.5rem;
     }
 

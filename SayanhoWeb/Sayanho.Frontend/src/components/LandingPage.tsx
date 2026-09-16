@@ -13,15 +13,26 @@ import {
     Cpu,
     Moon,
     Sun,
-    Save
+    Save,
+    CheckCircle2,
+    Code2,
+    Database,
+    ShieldCheck,
+    HelpCircle,
+    ChevronDown
 } from 'lucide-react';
 import './LandingPage.css';
 
 const LandingPage: React.FC = () => {
     const navigate = useNavigate();
+    const [openFaq, setOpenFaq] = React.useState<number | null>(null);
 
     const scrollToFeatures = () => {
         document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' });
+    };
+
+    const toggleFaq = (index: number) => {
+        setOpenFaq(openFaq === index ? null : index);
     };
 
     return (
@@ -34,6 +45,8 @@ const LandingPage: React.FC = () => {
                 </div>
                 <div className="lp-nav-links">
                     <span onClick={scrollToFeatures} className="lp-nav-link">Features</span>
+                    <span onClick={() => document.getElementById('specs')?.scrollIntoView({ behavior: 'smooth' })} className="lp-nav-link">Specs</span>
+                    <span onClick={() => document.getElementById('faq')?.scrollIntoView({ behavior: 'smooth' })} className="lp-nav-link">FAQ</span>
                     <button onClick={() => navigate('/design')} className="btn-primary-sm">
                         Launch Designer
                         <ArrowRight size={16} />
@@ -51,11 +64,11 @@ const LandingPage: React.FC = () => {
                     </div>
                     <h1>
                         Professional Electrical<br />
-                        <span className="gradient-text">Panel Design</span>
+                        <span className="gradient-text">Distribution Design</span>
                     </h1>
                     <p className="hero-subtitle">
-                        The complete web-based CAD environment for electrical engineers.
-                        Design LT cubicle panels, calculate ratings, and export professional
+                        The complete web-based tool for electrical engineers.
+                        Create single-line diagrams, configure panels, calculate ratings, and export professional
                         documentation — all in your browser.
                     </p>
                     <div className="hero-ctas">
@@ -87,7 +100,15 @@ const LandingPage: React.FC = () => {
 
                 <div className="hero-visual">
                     <div className="hero-visual-glow"></div>
-                    <img src="/assets/landing/hero_workspace.png" alt="Sayanho Designer Workspace" />
+                    <video
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        poster="/assets/landing/hero_workspace.png"
+                    >
+                        <source src="/assets/landing/hero_video.webp" type="video/webp" />
+                    </video>
                 </div>
             </section>
 
@@ -95,7 +116,7 @@ const LandingPage: React.FC = () => {
             <section id="features" className="features-section">
                 <div className="section-header">
                     <span className="section-badge">FEATURES</span>
-                    <h2>Everything you need for<br /><span className="gradient-text">electrical design</span></h2>
+                    <h2>Everything you need for<br /><span className="gradient-text">electrical distribution</span></h2>
                 </div>
 
                 <div className="bento-grid">
@@ -177,10 +198,10 @@ const LandingPage: React.FC = () => {
                         with proper ratings — all through an intuitive visual interface.
                     </p>
                     <ul className="feature-list">
-                        <li><Zap size={18} /> Visual incomer and outgoing slot configuration</li>
-                        <li><Zap size={18} /> Real-time panel layout preview</li>
-                        <li><Zap size={18} /> Copy/paste device configurations</li>
-                        <li><Zap size={18} /> Multi-section panel support</li>
+                        <li><CheckCircle2 size={18} /> Visual incomer and outgoing slot configuration</li>
+                        <li><CheckCircle2 size={18} /> Real-time panel layout preview</li>
+                        <li><CheckCircle2 size={18} /> Copy/paste device configurations</li>
+                        <li><CheckCircle2 size={18} /> Multi-section panel support</li>
                     </ul>
                     <button onClick={() => navigate('/design')} className="btn-primary">
                         Try It Now
@@ -205,7 +226,15 @@ const LandingPage: React.FC = () => {
             <section className="deep-dive reverse">
                 <div className="deep-dive-visual">
                     <div className="visual-glow"></div>
-                    <img src="/assets/landing/ai_assistant.png" alt="AI Diagram Assistant" />
+                    <video
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        className="rounded-lg border border-white/10 shadow-2xl"
+                    >
+                        <source src="/assets/landing/ai_chat_video.webp" type="video/webp" />
+                    </video>
                 </div>
                 <div className="deep-dive-content">
                     <span className="section-badge">AI-POWERED</span>
@@ -218,9 +247,9 @@ const LandingPage: React.FC = () => {
                     </p>
                     <ul className="feature-list">
                         <li><Cpu size={18} /> Context-aware diagram manipulation</li>
-                        <li><Cpu size={18} /> Database query mode for specifications</li>
-                        <li><Cpu size={18} /> Add selection to chat for analysis</li>
-                        <li><Cpu size={18} /> Execute design tools via commands</li>
+                        <li><Database size={18} /> Database query mode for specifications</li>
+                        <li><MessageSquare size={18} /> Add selection to chat for analysis</li>
+                        <li><Zap size={18} /> Execute design tools via commands</li>
                     </ul>
                 </div>
             </section>
@@ -236,15 +265,57 @@ const LandingPage: React.FC = () => {
                         selecting appropriate ratings for MCCBs, cables, and protective devices.
                     </p>
                     <ul className="feature-list">
-                        <li><Zap size={18} /> IEC-compliant rating calculations</li>
-                        <li><Zap size={18} /> Detailed process logs for transparency</li>
-                        <li><Zap size={18} /> Downloadable PDF reports</li>
+                        <li><ShieldCheck size={18} /> IEC-compliant rating calculations</li>
+                        <li><FileText size={18} /> Detailed process logs for transparency</li>
+                        <li><Download size={18} /> Downloadable PDF reports</li>
                         <li><Zap size={18} /> Dynamic property updates</li>
                     </ul>
                 </div>
                 <div className="deep-dive-visual">
                     <div className="visual-glow"></div>
-                    <img src="/assets/landing/auto_rating.png" alt="Auto-Rating Results" />
+                    <img
+                        src="/assets/landing/autorating_result.png"
+                        alt="Auto Rating Result"
+                        className="rounded-lg border border-white/10 shadow-2xl w-full"
+                    />
+                </div>
+            </section>
+
+            {/* Technical Specs Section (New) */}
+            <section id="specs" className="specs-section">
+                <div className="section-header">
+                    <span className="section-badge">BUILT FOR PERFORMANCE</span>
+                    <h2>Technical<br /><span className="gradient-text">Specifications</span></h2>
+                </div>
+                <div className="specs-grid">
+                    <div className="spec-item">
+                        <Code2 size={24} className="spec-icon" />
+                        <div>
+                            <h4>React & TypeScript</h4>
+                            <p>Built with modern web technologies for maximum performance and type safety.</p>
+                        </div>
+                    </div>
+                    <div className="spec-item">
+                        <Zap size={24} className="spec-icon" />
+                        <div>
+                            <h4>Canvas Rendering</h4>
+                            <p>High-performance canvas rendering engine capable of handling thousands of components.</p>
+                        </div>
+                    </div>
+                    <div className="spec-item">
+                        <Database size={24} className="spec-icon" />
+                        <div>
+                            <h4>Local Storage</h4>
+                            <p>Auto-save functionality ensures your work is never lost, even if browsing is interrupted.</p>
+                        </div>
+                    </div>
+                    <div className="spec-item">
+                        <ShieldCheck size={24} className="spec-icon" />
+                        <div>
+                            <h4>Client-Side Processing</h4>
+                            <p>Most calculations happen directly in your browser for instant feedback.</p>
+                        </div>
+                    </div>
                 </div>
             </section>
 
@@ -273,42 +344,29 @@ const LandingPage: React.FC = () => {
                 </div>
             </section>
 
-            {/* Workflow Steps */}
-            <section className="workflow-section">
+            {/* FAQ Section (New) */}
+            <section id="faq" className="faq-section">
                 <div className="section-header">
-                    <span className="section-badge">WORKFLOW</span>
-                    <h2>From concept to<br /><span className="gradient-text">completion</span></h2>
+                    <span className="section-badge">FAQ</span>
+                    <h2>Common<br /><span className="gradient-text">Questions</span></h2>
                 </div>
-                <div className="workflow-steps">
-                    <div className="workflow-step">
-                        <div className="step-number">01</div>
-                        <h4>Design</h4>
-                        <p>Drag components onto the canvas and create logical connections between them</p>
-                    </div>
-                    <div className="workflow-connector"></div>
-                    <div className="workflow-step">
-                        <div className="step-number">02</div>
-                        <h4>Analyze</h4>
-                        <p>Run auto-rating, calculate voltage drop, and use AI to optimize your design</p>
-                    </div>
-                    <div className="workflow-connector"></div>
-                    <div className="workflow-step">
-                        <div className="step-number">03</div>
-                        <h4>Export</h4>
-                        <p>Generate Excel estimates, PDF reports, and high-resolution PNG diagrams</p>
-                    </div>
-                </div>
-            </section>
-
-            {/* Theme Toggle Showcase */}
-            <section className="theme-section">
-                <div className="theme-content">
-                    <div className="theme-icons">
-                        <Sun size={32} className="sun-icon" />
-                        <Moon size={32} className="moon-icon" />
-                    </div>
-                    <h3>Dark & Light Themes</h3>
-                    <p>Work comfortably in any environment with built-in theme support</p>
+                <div className="faq-container">
+                    {[
+                        { q: "Is Sayanho free to use?", a: "Yes, Sayanho is currently 100% free for all users. You can access all features including the AI assistant without any cost." },
+                        { q: "Can I export my designs?", a: "Absolutely. You can export your diagrams as high-quality PNG images, and your bill of quantities (BOQ) as Excel files." },
+                        { q: "Does it work offline?", a: "Sayanho requires an internet connection for initial load and AI features, but many design functions work locally in your browser." },
+                        { q: "Is my data secure?", a: "Your project data is stored locally in your browser's storage by default. We prioritize your privacy and data security." }
+                    ].map((item, index) => (
+                        <div key={index} className={`faq-item ${openFaq === index ? 'open' : ''}`} onClick={() => toggleFaq(index)}>
+                            <div className="faq-question">
+                                <span>{item.q}</span>
+                                <ChevronDown size={20} className={`faq-icon ${openFaq === index ? 'rotate' : ''}`} />
+                            </div>
+                            <div className="faq-answer">
+                                <p>{item.a}</p>
+                            </div>
+                        </div>
+                    ))}
                 </div>
             </section>
 
