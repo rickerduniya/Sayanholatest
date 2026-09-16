@@ -61,8 +61,14 @@ builder.Services.AddRateLimiter(options =>
     });
 });
 
-// Add CORS - read allowed origins from appsettings
+// Add CORS - read allowed origins from appsettings plus the ALLOWED_ORIGINS
+// environment variable (comma- or semicolon-separated). The env var is how
+// hosted frontends (e.g. https://<app>.vercel.app) are allow-listed without
+// committing each deploy URL to appsettings.json.
 var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? new string[0];
+var extraOrigins = (Environment.GetEnvironmentVariable("ALLOWED_ORIGINS") ?? string.Empty)
+    .Split(new[] { ',', ';' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+allowedOrigins = allowedOrigins.Concat(extraOrigins).Distinct().ToArray();
 
 builder.Services.AddCors(options =>
 {
